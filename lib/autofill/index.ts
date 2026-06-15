@@ -1,0 +1,111 @@
+import type { Variant } from "@/lib/scorecard/modwash";
+import { geocode, ringTractGeoids, ringDemographics } from "./census";
+import { estimateSnowDays, suggestVariant } from "./climate";
+import { detectCompetition } from "./places";
+
+/** One auto-filled scorecard field + provenance. */
+export interface AutofillField {
+  value: number | string;
+  source: string;
+  /** "data" = from a real source, "estimate" = heuristic, "mock" = placeholder. */
+  confidence: "data" | "estimate" | "mock";
+  note?: string;
+}
+
+export interface AutofillResult {
+  ok: boolean;
+  error?: string;
+  matchedAddress?: string;
+  lat?: number;
+  lng?: number;
+  suggestedVariant?: Variant;
+  /** Keyed by ScorecardInputs field id. */
+  fields: Record<string, AutofillField>;
+  warnings: string[];
+}
+
+const RING_METERS = 4828; // 3 miles — matches the trade-area magnitude in the data
+
+export async function autofillSite(address: string): Promise<AutofillResult> {
+  const geo = await geocode(address);
+  if (!geo) {
+    return {
+      ok: false,
+      error:
+        "Couldn't find that address. Check the spelling, or enter the inputs manually.",
+      fields: {},
+      warnings: [],
+    };
+  }
+
+  const fields: Record<string, AutofillField> = {};
+  const warnings: string[] = [];
+
+  // Climate + variant (free, latitude heuristic)
+  fields.snowDays = {
+    value: estimateSnowDays(geo.lat),
+    source: "Climate estimate (latitude)",
+    confidence: "estimate",
+    note: "Rough — confirm against NOAA normals for the market.",
+  };
+
+  // Competition + traffic driver (placeholder)
+  const comp = detectCompetition(address);
+  fields.competition = {
+    value: comp.count,
+    source: "Placeholder",
+    confidence: "mock",
+    note: "Mock value — wire Google Places to count real car washes nearby.",
+  };
+  fields.qualityOfCompetition = {
+    value: comp.quality,
+    source: "Placeholder",
+    confidence: "mock",
+  };
+  fields.trafficDriver = {
+    value: comp.trafficDriver,
+    source: "Placeholder",
+    confidence: "mock",
+    note: "Mock — Places will classify nearby anchors (Walmart=A, Food Lion=B…).",
+  };
+
+  // Demographics — real ACS 3-mile tract ring (needs free key)
+  const key = process.env.CENSUS_API_KEY;
+  const geoids = await ringTractGeoids(geo.lat, geo.lng, RING_METERS);
+  const demo = await ringDemographics(geo.state, geo.county, geoids, key);
+
+  if (demo) {
+    fields.population = {
+      value: demo.population,
+      source: `US Census ACS — 3-mi ring (${demo.tractCount} tracts)`,
+      confidence: "data",
+    };
+    if (demo.medianIncome > 0) {
+      fields.medianIncome = {
+        value: demo.medianIncome,
+        source: "US Census ACS — 3-mi ring",
+        confidence: "data",
+      };
+    }
+  } else if (!key) {
+    warnings.push(
+      "Add a free CENSUS_API_KEY to .env.local to auto-fill demographics (population & income). Sign up: api.census.gov/data/key_signup.html",
+    );
+  } else {
+    warnings.push("Census demographics weren't available for this location.");
+  }
+
+  warnings.push(
+    "Traffic count, daytime population, projected growth, and the physical site fields (visibility, ingress, layout) still need manual entry.",
+  );
+
+  return {
+    ok: true,
+    matchedAddress: geo.matchedAddress,
+    lat: geo.lat,
+    lng: geo.lng,
+    suggestedVariant: suggestVariant(geo.lat),
+    fields,
+    warnings,
+  };
+}

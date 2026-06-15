@@ -12,6 +12,20 @@ import {
   type Criterion,
 } from "@/lib/scorecard/modwash";
 import { GradeBadge } from "@/components/badges";
+import { autofillAction } from "@/app/tenants/[id]/scorecard/actions";
+
+interface AutoMeta {
+  source: string;
+  confidence: "data" | "estimate" | "mock";
+  note?: string;
+}
+type AutoMap = Record<string, AutoMeta>;
+
+const AUTO_TAG_STYLE: Record<AutoMeta["confidence"], string> = {
+  data: "bg-brand-blue/10 text-sky-700",
+  estimate: "bg-amber-50 text-amber-700",
+  mock: "bg-slate-100 text-slate-500",
+};
 
 const DEFAULTS: ScorecardInputs = {
   trafficCount: 25000,
@@ -37,13 +51,57 @@ export function ScorecardTool() {
   const [inputs, setInputs] = useState<ScorecardInputs>(DEFAULTS);
   const [variant, setVariant] = useState<Variant>("southern");
   const [address, setAddress] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [autofilled, setAutofilled] = useState<AutoMap>({});
+  const [banner, setBanner] = useState<
+    { matched?: string; warnings: string[]; error?: string } | null
+  >(null);
 
   const result = useMemo(() => scoreSite(inputs, variant), [inputs, variant]);
 
-  const setNum = (id: string, v: string) =>
+  const setNum = (id: string, v: string) => {
     setInputs((prev) => ({ ...prev, [id]: v === "" ? 0 : Number(v) }));
-  const setSel = (id: string, v: string) =>
+    clearAuto(id);
+  };
+  const setSel = (id: string, v: string) => {
     setInputs((prev) => ({ ...prev, [id]: v }));
+    clearAuto(id);
+  };
+  // Once a user edits a field, drop its auto-fill tag (it's now their value).
+  const clearAuto = (id: string) =>
+    setAutofilled((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+
+  async function runAutofill() {
+    if (!address.trim() || loading) return;
+    setLoading(true);
+    setBanner(null);
+    try {
+      const res = await autofillAction(address);
+      if (!res.ok) {
+        setBanner({ warnings: [], error: res.error });
+        return;
+      }
+      setInputs((prev) => {
+        const next = { ...prev } as Record<string, number | string>;
+        for (const [k, f] of Object.entries(res.fields)) next[k] = f.value;
+        return next as unknown as ScorecardInputs;
+      });
+      if (res.suggestedVariant) setVariant(res.suggestedVariant);
+      const meta: AutoMap = {};
+      for (const [k, f] of Object.entries(res.fields)) {
+        meta[k] = { source: f.source, confidence: f.confidence, note: f.note };
+      }
+      setAutofilled(meta);
+      setBanner({ matched: res.matchedAddress, warnings: res.warnings });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -58,18 +116,39 @@ export function ScorecardTool() {
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runAutofill()}
               placeholder="123 Main St, City, ST"
               className="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
             />
             <button
               type="button"
-              disabled
-              title="Census + Places auto-fill — coming next"
-              className="cursor-not-allowed rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs font-medium text-slate-400"
+              onClick={runAutofill}
+              disabled={loading || !address.trim()}
+              className="rounded-md bg-ink px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Auto-fill (soon)
+              {loading ? "Filling…" : "Auto-fill"}
             </button>
           </div>
+
+          {banner?.error && (
+            <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {banner.error}
+            </p>
+          )}
+          {banner && !banner.error && (
+            <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              {banner.matched && (
+                <p className="text-xs font-medium text-slate-700">
+                  Matched: {banner.matched}
+                </p>
+              )}
+              {banner.warnings.map((w, i) => (
+                <p key={i} className="mt-1 text-[11px] text-slate-500">
+                  • {w}
+                </p>
+              ))}
+            </div>
+          )}
           <div className="mt-3 flex items-center gap-2">
             <span className="text-xs font-medium text-slate-500">Market:</span>
             <div className="flex rounded-md bg-slate-100 p-0.5 text-xs font-medium">
@@ -102,6 +181,7 @@ export function ScorecardTool() {
               key={c.field.id}
               criterion={c}
               inputs={inputs}
+              autofilled={autofilled}
               setNum={setNum}
               setSel={setSel}
               last={i === MODWASH_CRITERIA.length - 1}
@@ -166,12 +246,14 @@ export function ScorecardTool() {
 function CriterionRow({
   criterion,
   inputs,
+  autofilled,
   setNum,
   setSel,
   last,
 }: {
   criterion: Criterion;
   inputs: ScorecardInputs;
+  autofilled: AutoMap;
   setNum: (id: string, v: string) => void;
   setSel: (id: string, v: string) => void;
   last: boolean;
@@ -197,28 +279,48 @@ function CriterionRow({
               key={child.id}
               field={child}
               inputs={inputs}
+              auto={autofilled[child.id]}
               setNum={setNum}
               setSel={setSel}
             />
           ))}
         </div>
       ) : field.id === "popPerWash" ? (
-        <PopPerWash inputs={inputs} setNum={setNum} />
+        <PopPerWash inputs={inputs} auto={autofilled.population} setNum={setNum} />
       ) : (
-        <Leaf field={field} inputs={inputs} setNum={setNum} setSel={setSel} />
+        <Leaf
+          field={field}
+          inputs={inputs}
+          auto={autofilled[field.id]}
+          setNum={setNum}
+          setSel={setSel}
+        />
       )}
     </div>
+  );
+}
+
+function AutoTag({ meta }: { meta: AutoMeta }) {
+  return (
+    <span
+      title={`${meta.source}${meta.note ? " — " + meta.note : ""}`}
+      className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${AUTO_TAG_STYLE[meta.confidence]}`}
+    >
+      {meta.confidence === "data" ? "auto" : meta.confidence}
+    </span>
   );
 }
 
 function Leaf({
   field,
   inputs,
+  auto,
   setNum,
   setSel,
 }: {
   field: NumericField | SelectField;
   inputs: ScorecardInputs;
+  auto?: AutoMeta;
   setNum: (id: string, v: string) => void;
   setSel: (id: string, v: string) => void;
 }) {
@@ -228,6 +330,7 @@ function Leaf({
       <span className="mb-1 block text-xs font-medium text-slate-500">
         {field.label}
         {field.kind === "numeric" && field.unit ? ` (${field.unit})` : ""}
+        {auto && <AutoTag meta={auto} />}
       </span>
       {field.kind === "numeric" ? (
         <input
@@ -259,9 +362,11 @@ function Leaf({
 /** Population per car wash = population ÷ (1 + competition), shown read-only. */
 function PopPerWash({
   inputs,
+  auto,
   setNum,
 }: {
   inputs: ScorecardInputs;
+  auto?: AutoMeta;
   setNum: (id: string, v: string) => void;
 }) {
   const computed = popPerWash(inputs);
@@ -270,6 +375,7 @@ function PopPerWash({
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-slate-500">
           Trade-area Population
+          {auto && <AutoTag meta={auto} />}
         </span>
         <input
           type="number"
