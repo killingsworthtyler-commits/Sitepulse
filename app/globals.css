@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #14161b;
+}
+
+/* Non-inline so these are emitted as real CSS variables on :root — both the
+   generated utilities (bg-ink, bg-brand-blue, …) AND the custom classes below
+   (which use var(--color-brand-*)) depend on that. */
+@theme {
+  /* Hutton brand palette (pulled from the logo gradient). */
+  --color-brand-blue: #00b3ff;
+  --color-brand-purple: #a37df0;
+  --color-brand-magenta: #ff008c;
+
+  /* Dark base, matching the near-black Hutton wordmark. */
+  --color-ink: #14161b;
+  --color-ink-soft: #1f242e;
+  --color-ink-line: #2b313c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Typography — matches Hutton: condensed-bold display + Open Sans body. */
+  --font-sans: var(--font-open-sans), system-ui, sans-serif;
+  --font-display: var(--font-barlow), var(--font-open-sans), sans-serif;
+}
+
+/* The signature Hutton gradient — used sparingly on the logo mark, the live
+   pulse, and primary accents. */
+.brand-gradient {
+  background-image: linear-gradient(
+    135deg,
+    var(--color-brand-blue) 0%,
+    var(--color-brand-purple) 50%,
+    var(--color-brand-magenta) 100%
+  );
+}
+
+.brand-text-gradient {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-brand-blue) 0%,
+    var(--color-brand-purple) 55%,
+    var(--color-brand-magenta) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
