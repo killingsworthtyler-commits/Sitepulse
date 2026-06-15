@@ -42,8 +42,9 @@ export async function geocode(address: string): Promise<GeoResult | null> {
   }
 }
 
-/** Census tract GEOIDs whose geometry falls within `meters` of the point. Free. */
-export async function ringTractGeoids(
+/** Census block-group GEOIDs (12-digit) within `meters` of the point. Free.
+    Block groups hug a radius ring far better than whole tracts. */
+export async function ringBlockGroupGeoids(
   lat: number,
   lng: number,
   meters: number,
@@ -52,7 +53,7 @@ export async function ringTractGeoids(
     JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
   );
   const url =
-    "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/8/query" +
+    "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/10/query" +
     `?geometry=${geometry}&geometryType=esriGeometryPoint&inSR=4326` +
     `&distance=${meters}&units=esriSRUnit_Meter` +
     "&spatialRel=esriSpatialRelIntersects&outFields=GEOID&returnGeometry=false&f=json";
@@ -71,13 +72,16 @@ export async function ringTractGeoids(
 
 export interface RingDemographics {
   population: number;
+  /** Household-weighted median household income. */
   medianIncome: number;
-  tractCount: number;
+  /** Employed residents (ACS B23025_004E) — used for the daytime estimate. */
+  employedResidents: number;
+  bgCount: number;
 }
 
 /**
- * Aggregate ACS 5-year demographics across a set of tract GEOIDs (a radius ring):
- * sum population, population-weight median household income. Needs a free key.
+ * Aggregate ACS 5-year demographics over a set of block-group GEOIDs (the ring):
+ * sum population & employed residents, household-weight median income. Needs key.
  */
 export async function ringDemographics(
   state: string,
@@ -90,8 +94,8 @@ export async function ringDemographics(
 
   const url =
     `https://api.census.gov/data/${year}/acs/acs5` +
-    "?get=B01003_001E,B19013_001E" +
-    `&for=tract:*&in=state:${state}%20county:${county}&key=${key}`;
+    "?get=B01003_001E,B19013_001E,B11001_001E,B23025_004E" +
+    `&for=block%20group:*&in=state:${state}%20county:${county}&key=${key}`;
 
   try {
     const res = await fetch(url);
@@ -100,39 +104,74 @@ export async function ringDemographics(
     const header = rows[0];
     const iPop = header.indexOf("B01003_001E");
     const iInc = header.indexOf("B19013_001E");
+    const iHH = header.indexOf("B11001_001E");
+    const iEmp = header.indexOf("B23025_004E");
     const iState = header.indexOf("state");
     const iCounty = header.indexOf("county");
     const iTract = header.indexOf("tract");
+    const iBg = header.indexOf("block group");
 
     const want = new Set(geoids);
     let population = 0;
+    let employedResidents = 0;
     let incWeighted = 0;
-    let incPop = 0;
-    let tractCount = 0;
+    let households = 0;
+    let bgCount = 0;
 
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
-      const geoid = `${r[iState]}${r[iCounty]}${r[iTract]}`;
+      const geoid = `${r[iState]}${r[iCounty]}${r[iTract]}${r[iBg]}`;
       if (!want.has(geoid)) continue;
-      tractCount++;
+      bgCount++;
       const pop = Number(r[iPop]);
       const inc = Number(r[iInc]);
-      if (pop > 0) {
-        population += pop;
-        if (inc > 0) {
-          incWeighted += inc * pop;
-          incPop += pop;
-        }
+      const hh = Number(r[iHH]);
+      const emp = Number(r[iEmp]);
+      if (pop > 0) population += pop;
+      if (emp > 0) employedResidents += emp;
+      if (inc > 0 && hh > 0) {
+        incWeighted += inc * hh;
+        households += hh;
       }
     }
 
     if (population === 0) return null;
     return {
       population,
-      medianIncome: incPop > 0 ? Math.round(incWeighted / incPop) : 0,
-      tractCount,
+      medianIncome: households > 0 ? Math.round(incWeighted / households) : 0,
+      employedResidents,
+      bgCount,
     };
   } catch {
     return null;
   }
+}
+
+/** Annualized population growth (%/yr) for the county over a 5-year ACS window.
+    County geography is stable across vintages, so this is a clean trend proxy. */
+export async function countyGrowth(
+  state: string,
+  county: string,
+  key: string | undefined,
+  y0 = 2018,
+  y1 = 2023,
+): Promise<number | null> {
+  if (!key) return null;
+  const popFor = async (year: number): Promise<number | null> => {
+    const url =
+      `https://api.census.gov/data/${year}/acs/acs5` +
+      `?get=B01003_001E&for=county:${county}&in=state:${state}&key=${key}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data: string[][] = await res.json();
+      return Number(data[1][0]);
+    } catch {
+      return null;
+    }
+  };
+  const p0 = await popFor(y0);
+  const p1 = await popFor(y1);
+  if (!p0 || !p1 || p0 <= 0) return null;
+  return (Math.pow(p1 / p0, 1 / (y1 - y0)) - 1) * 100;
 }

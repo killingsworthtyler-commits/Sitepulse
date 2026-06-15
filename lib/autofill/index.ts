@@ -1,5 +1,11 @@
 import type { Variant } from "@/lib/scorecard/modwash";
-import { geocode, ringTractGeoids, ringDemographics } from "./census";
+import {
+  geocode,
+  ringBlockGroupGeoids,
+  ringDemographics,
+  countyGrowth,
+} from "./census";
+import { getRingJobs } from "./lodes";
 import { estimateSnowDays, suggestVariant } from "./climate";
 import { detectCompetition } from "./places";
 
@@ -69,22 +75,41 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
     note: "Mock — Places will classify nearby anchors (Walmart=A, Food Lion=B…).",
   };
 
-  // Demographics — real ACS 3-mile tract ring (needs free key)
+  // Demographics — real ACS 3-mile block-group ring (needs free key)
   const key = process.env.CENSUS_API_KEY;
-  const geoids = await ringTractGeoids(geo.lat, geo.lng, RING_METERS);
+  const geoids = await ringBlockGroupGeoids(geo.lat, geo.lng, RING_METERS);
   const demo = await ringDemographics(geo.state, geo.county, geoids, key);
+
+  const ringNote =
+    "Census ACS 3-mi block-group ring — approximate; concentric rings read higher than custom trade-area reports, so review.";
 
   if (demo) {
     fields.population = {
       value: demo.population,
-      source: `US Census ACS — 3-mi ring (${demo.tractCount} tracts)`,
+      source: `US Census ACS — 3-mi ring (${demo.bgCount} block groups)`,
       confidence: "data",
+      note: ringNote,
     };
     if (demo.medianIncome > 0) {
       fields.medianIncome = {
         value: demo.medianIncome,
-        source: "US Census ACS — 3-mi ring",
+        source: "US Census ACS — 3-mi ring (household-weighted)",
         confidence: "data",
+        note: ringNote,
+      };
+    }
+
+    // Daytime population = residents + jobs in area − employed residents.
+    const jobs = await getRingJobs(geo.state, geoids);
+    if (jobs != null && demo.employedResidents > 0) {
+      fields.daytimePop = {
+        value: Math.max(
+          0,
+          Math.round(demo.population + jobs - demo.employedResidents),
+        ),
+        source: "Census ACS + LODES — 3-mi ring",
+        confidence: "estimate",
+        note: "Residents + jobs in area − employed residents. Approximate.",
       };
     }
   } else if (!key) {
@@ -95,8 +120,19 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
     warnings.push("Census demographics weren't available for this location.");
   }
 
+  // Projected growth — county ACS trend, annualized (needs key)
+  const growth = await countyGrowth(geo.state, geo.county, key);
+  if (growth != null) {
+    fields.projGrowth = {
+      value: Math.round(growth * 100) / 100,
+      source: "US Census ACS — county trend (5-yr annualized)",
+      confidence: "estimate",
+      note: "County growth trend as a proxy for projected growth.",
+    };
+  }
+
   warnings.push(
-    "Traffic count, daytime population, projected growth, and the physical site fields (visibility, ingress, layout) still need manual entry.",
+    "Traffic count and the physical site fields (visibility, ingress, layout) still need manual entry.",
   );
 
   return {
