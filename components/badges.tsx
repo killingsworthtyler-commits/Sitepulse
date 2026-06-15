@@ -27,6 +27,26 @@ export function StageBadge({ stage }: { stage: StageId }) {
   );
 }
 
+const GRADE_STYLE: Record<string, string> = {
+  A: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  B: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  C: "bg-rose-50 text-rose-700 ring-rose-600/20",
+};
+
+export function GradeBadge({ grade, size = "sm" }: { grade: string; size?: "sm" | "lg" }) {
+  const dims =
+    size === "lg" ? "h-10 w-10 text-xl" : "h-6 w-6 text-xs";
+  return (
+    <span
+      className={`font-display inline-flex items-center justify-center rounded-md font-bold ring-1 ring-inset ${dims} ${
+        GRADE_STYLE[grade] ?? GRADE_STYLE.C
+      }`}
+    >
+      {grade}
+    </span>
+  );
+}
+
 export function TeamBadge({ team }: { team: TeamId }) {
   const t = TEAM_MAP[team];
   return (

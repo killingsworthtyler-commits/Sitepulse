@@ -1,16 +1,22 @@
-import Link from "next/link";
+"use client";
 
-type NavItem = { label: string; href: string; soon?: boolean; active?: boolean };
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+type NavItem = { label: string; href: string; soon?: boolean };
 
 const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/", active: true },
-  { label: "Projects", href: "/", },
-  { label: "Site Scorecards", href: "/", soon: true },
-  { label: "Stages", href: "/", soon: true },
-  { label: "Reports", href: "/", soon: true },
+  { label: "Dashboard", href: "/" },
+  { label: "Tenants", href: "/tenants" },
+  { label: "Projects", href: "/projects", soon: true },
+  { label: "Reports", href: "/reports", soon: true },
 ];
 
 export function Sidebar() {
+  const pathname = usePathname();
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
+
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-ink-line bg-ink px-4 py-6 md:flex">
       <div className="flex items-center gap-2.5 px-2">
@@ -26,29 +32,38 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-8 flex flex-col gap-1">
-        {NAV.map((item, i) => (
-          <Link
-            key={i}
-            href={item.href}
-            className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-              item.active
-                ? "bg-ink-soft font-semibold text-white"
-                : "text-slate-400 hover:bg-ink-soft/60 hover:text-slate-200"
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              {item.active && (
-                <span className="h-4 w-1 rounded-full brand-gradient" />
-              )}
-              {item.label}
-            </span>
-            {item.soon && (
-              <span className="rounded bg-ink-soft px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate-500">
-                Soon
+        {NAV.map((item) => {
+          const active = !item.soon && isActive(item.href);
+          const inner = (
+            <>
+              <span className="flex items-center gap-2.5">
+                {active && (
+                  <span className="h-4 w-1 rounded-full brand-gradient" />
+                )}
+                {item.label}
               </span>
-            )}
-          </Link>
-        ))}
+              {item.soon && (
+                <span className="rounded bg-ink-soft px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate-500">
+                  Soon
+                </span>
+              )}
+            </>
+          );
+          const cls = `flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+            active
+              ? "bg-ink-soft font-semibold text-white"
+              : "text-slate-400 hover:bg-ink-soft/60 hover:text-slate-200"
+          }`;
+          return item.soon ? (
+            <span key={item.label} className={`${cls} cursor-default`}>
+              {inner}
+            </span>
+          ) : (
+            <Link key={item.label} href={item.href} className={cls}>
+              {inner}
+            </Link>
+          );
+        })}
       </nav>
 
       <div className="mt-auto rounded-lg bg-ink-soft/50 p-3">
