@@ -1,0 +1,19 @@
+# Render Blueprint for SITE PULSE.
+# Render → Blueprints → New Blueprint Instance → pick this repo, and it creates
+# the web service preconfigured. Secrets (sync:false) are entered in the dashboard.
+services:
+  - type: web
+    name: site-pulse
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: CENSUS_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
