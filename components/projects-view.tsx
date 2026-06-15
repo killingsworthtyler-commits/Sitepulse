@@ -33,9 +33,9 @@ export function ProjectsView({ projects }: { projects: Project[] }) {
   }, [projects, query, health, team, stage]);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="rounded-lg border border-slate-200 bg-white ring-1 ring-slate-900/[0.02]">
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-2">
           <h2 className="font-display text-lg font-bold uppercase tracking-wide text-ink">
             Projects
@@ -84,7 +84,7 @@ export function ProjectsView({ projects }: { projects: Project[] }) {
       </div>
 
       {/* Team filter — the primary lens for RE / Development / Construction */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2.5">
         <span className="mr-1 text-xs font-medium uppercase tracking-wide text-slate-400">
           Team
         </span>
@@ -107,7 +107,7 @@ export function ProjectsView({ projects }: { projects: Project[] }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[920px] text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
+            <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <th className="px-4 py-2.5 font-medium">Project</th>
               <th className="px-4 py-2.5 font-medium">Team</th>
               <th className="px-4 py-2.5 font-medium">Stage</th>
@@ -122,11 +122,11 @@ export function ProjectsView({ projects }: { projects: Project[] }) {
             {filtered.map((p) => (
               <tr
                 key={p.id}
-                className="border-b border-slate-50 transition-colors last:border-0 hover:bg-slate-50/70"
+                className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50"
               >
                 <td className="px-4 py-3">
                   <p className="font-medium text-slate-900">{p.name}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500">
                     {p.tenant} · {p.city}, {p.state}
                   </p>
                 </td>
@@ -147,7 +147,7 @@ export function ProjectsView({ projects }: { projects: Project[] }) {
                 </td>
                 <td className="px-4 py-3">
                   <p className="text-slate-700">{p.nextMilestone.label}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500">
                     {shortDate(p.nextMilestone.date)} · {dueLabel(p.nextMilestone.date)}
                   </p>
                 </td>
@@ -156,7 +156,7 @@ export function ProjectsView({ projects }: { projects: Project[] }) {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500">
                   No projects match your filters.
                 </td>
               </tr>
@@ -226,7 +226,7 @@ function ProgressBar({ value }: { value: number }) {
           style={{ width: `${value}%` }}
         />
       </div>
-      <span className="text-xs text-slate-400 tabular-nums">{value}%</span>
+      <span className="text-xs font-medium text-slate-500 tabular-nums">{value}%</span>
     </div>
   );
 }

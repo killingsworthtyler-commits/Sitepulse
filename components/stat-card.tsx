@@ -17,7 +17,7 @@ export function StatCard({
   }[accent];
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-slate-200 bg-white p-5 ring-1 ring-slate-900/[0.02]">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         {label}
       </p>
@@ -26,7 +26,7 @@ export function StatCard({
       >
         {value}
       </p>
-      {sub && <p className="mt-1.5 text-xs text-slate-400">{sub}</p>}
+      {sub && <p className="mt-2 text-xs font-medium text-slate-500">{sub}</p>}
     </div>
   );
 }

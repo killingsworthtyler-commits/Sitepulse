@@ -11,12 +11,12 @@ export function StagePipeline({ projects }: { projects: Project[] }) {
   );
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-slate-200 bg-white p-5 ring-1 ring-slate-900/[0.02]">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-display text-lg font-bold uppercase tracking-wide text-ink">
           Pipeline by team
         </h2>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs font-medium text-slate-500">
           {projects.length} active projects
         </span>
       </div>
@@ -30,18 +30,20 @@ export function StagePipeline({ projects }: { projects: Project[] }) {
           return (
             <div
               key={team.id}
-              className={`rounded-lg border-t-2 bg-slate-50/60 p-3 ${team.color.border}`}
+              className={`rounded-md border border-slate-200 border-t-2 bg-slate-50 p-3 ${team.color.border}`}
             >
               <div className="mb-3 flex items-baseline justify-between">
                 <div>
-                  <p className={`text-sm font-semibold ${team.color.text}`}>
+                  <p
+                    className={`font-display text-sm font-bold uppercase tracking-wide ${team.color.text}`}
+                  >
                     {team.label}
                   </p>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-500">
                     {team.responsibility}
                   </p>
                 </div>
-                <span className="text-lg font-semibold text-slate-700 tabular-nums">
+                <span className="font-display text-xl font-bold text-ink tabular-nums">
                   {teamCount}
                 </span>
               </div>
