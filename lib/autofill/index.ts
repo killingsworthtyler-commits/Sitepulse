@@ -7,7 +7,11 @@ import {
 } from "./census";
 import { getRingJobs } from "./lodes";
 import { estimateSnowDays, suggestVariant } from "./climate";
-import { detectCompetition } from "./places";
+import {
+  detectCompetition,
+  detectCompetitionPlaces,
+  detectTrafficDriverPlaces,
+} from "./places";
 
 /** One auto-filled scorecard field + provenance. */
 export interface AutofillField {
@@ -55,25 +59,61 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
     note: "Rough — confirm against NOAA normals for the market.",
   };
 
-  // Competition + traffic driver (placeholder)
-  const comp = detectCompetition(address);
-  fields.competition = {
-    value: comp.count,
-    source: "Placeholder",
-    confidence: "mock",
-    note: "Mock value — wire Google Places to count real car washes nearby.",
-  };
-  fields.qualityOfCompetition = {
-    value: comp.quality,
-    source: "Placeholder",
-    confidence: "mock",
-  };
-  fields.trafficDriver = {
-    value: comp.trafficDriver,
-    source: "Placeholder",
-    confidence: "mock",
-    note: "Mock — Places will classify nearby anchors (Walmart=A, Food Lion=B…).",
-  };
+  // Competition + traffic driver — Google Places when keyed, else placeholder.
+  const gKey = process.env.GOOGLE_MAPS_API_KEY;
+  const livePlaces = gKey
+    ? await detectCompetitionPlaces(geo.lat, geo.lng, gKey)
+    : null;
+  const liveDriver = gKey
+    ? await detectTrafficDriverPlaces(geo.lat, geo.lng, gKey)
+    : null;
+  const mock = detectCompetition(address);
+
+  if (livePlaces) {
+    fields.competition = {
+      value: livePlaces.count,
+      source: `Google Places — ${livePlaces.count} car wash${livePlaces.count === 1 ? "" : "es"} within 3 mi`,
+      confidence: "data",
+    };
+    fields.qualityOfCompetition = {
+      value: livePlaces.quality,
+      source: "Google Places — competitor brands",
+      confidence: "data",
+    };
+  } else {
+    fields.competition = {
+      value: mock.count,
+      source: "Placeholder",
+      confidence: "mock",
+      note: "Mock — add GOOGLE_MAPS_API_KEY for a real car-wash count.",
+    };
+    fields.qualityOfCompetition = {
+      value: mock.quality,
+      source: "Placeholder",
+      confidence: "mock",
+    };
+  }
+
+  if (liveDriver) {
+    fields.trafficDriver = {
+      value: liveDriver,
+      source: "Google Places — nearby retail anchors",
+      confidence: "data",
+    };
+  } else {
+    fields.trafficDriver = {
+      value: mock.trafficDriver,
+      source: "Placeholder",
+      confidence: "mock",
+      note: "Mock — Places classifies nearby anchors (Walmart=A, Food Lion=B…).",
+    };
+  }
+
+  if (gKey && !livePlaces && !liveDriver) {
+    warnings.push(
+      "Google Places returned nothing or the key/billing isn't active yet — using placeholders for competition.",
+    );
+  }
 
   // Demographics — real ACS 3-mile block-group ring (needs free key)
   const key = process.env.CENSUS_API_KEY;
