@@ -47,10 +47,28 @@ const DEFAULTS: ScorecardInputs = {
   snowDays: 5,
 };
 
-export function ScorecardTool() {
-  const [inputs, setInputs] = useState<ScorecardInputs>(DEFAULTS);
-  const [variant, setVariant] = useState<Variant>("southern");
-  const [address, setAddress] = useState("");
+export interface ScorecardDraft {
+  id?: string;
+  name: string;
+  address?: string;
+  variant: Variant;
+  inputs: ScorecardInputs;
+}
+
+export function ScorecardTool({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial?: ScorecardDraft;
+  onSave?: (draft: ScorecardDraft) => void;
+  onCancel?: () => void;
+} = {}) {
+  const [inputs, setInputs] = useState<ScorecardInputs>(initial?.inputs ?? DEFAULTS);
+  const [variant, setVariant] = useState<Variant>(initial?.variant ?? "southern");
+  const [address, setAddress] = useState(initial?.address ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [matched, setMatched] = useState(initial?.address ?? "");
   const [loading, setLoading] = useState(false);
   const [autofilled, setAutofilled] = useState<AutoMap>({});
   const [banner, setBanner] = useState<
@@ -98,6 +116,10 @@ export function ScorecardTool() {
       }
       setAutofilled(meta);
       setBanner({ matched: res.matchedAddress, warnings: res.warnings });
+      if (res.matchedAddress) {
+        setMatched(res.matchedAddress);
+        setName((n) => n || res.matchedAddress || n);
+      }
     } finally {
       setLoading(false);
     }
@@ -109,6 +131,16 @@ export function ScorecardTool() {
       <div className="space-y-4">
         {/* Address + variant */}
         <div className="rounded-lg border border-slate-200 bg-white p-4 ring-1 ring-slate-900/[0.02]">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Scorecard Name
+          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Charlotte — N Tryon St"
+            className="mt-1.5 mb-4 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          />
+
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Site Address
           </label>
@@ -235,9 +267,34 @@ export function ScorecardTool() {
             ))}
           </ul>
         </div>
-        <p className="px-1 text-[11px] text-slate-400">
-          Live preview. Saving scored sites to the platform comes next.
-        </p>
+        {onSave ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() =>
+                onSave({
+                  id: initial?.id,
+                  name: name.trim() || matched || address.trim() || "Untitled site",
+                  address: matched || address.trim() || undefined,
+                  variant,
+                  inputs,
+                })
+              }
+              className="brand-gradient flex-1 rounded-md px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95"
+            >
+              {initial?.id ? "Save changes" : "Save scorecard"}
+            </button>
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="rounded-md border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="px-1 text-[11px] text-slate-400">Live preview.</p>
+        )}
       </aside>
     </div>
   );

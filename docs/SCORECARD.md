@@ -27,11 +27,17 @@ Two variants: **Northern** (includes Snow Days, 72 pts possible) vs **Southern**
 The model is **declarative** — the same structure powers `scoreSite()` and renders
 the input form (`components/scorecard-tool.tsx`). Keep them unified.
 
-## Validation
-`lib/scorecard/modwash-sites.ts` stores real site inputs and recomputes them with
-the engine. It reproduces the spreadsheets exactly: West Palm 100% A, Inman 91% A,
-Carlisle 81% B, Jacksonville 55% C, Rocky Mount 42% C, Lady Lake 41% C. Treat this
-as a regression check — if a model change breaks these, the change is wrong.
+## Saved scorecards (`lib/scorecard/store.ts`)
+Users score sites in `/scorecard` (the workbench) and save them. Scorecards
+persist in the browser via `localStorage` (key `sitepulse.scorecards.v1`) — pure
+list-in/list-out functions so a future Supabase/Postgres swap only touches this
+file. Only inputs + variant are stored; the grade is recomputed by the engine, so
+it can never drift. The list supports search + grade filtering, edit, and delete.
+
+> The engine was reverse-engineered to reproduce Hutton's spreadsheets exactly
+> (West Palm 100% A, Inman 91% A, Carlisle 81% B, Jacksonville 55% C, Rocky Mount
+> 42% C, Lady Lake 41% C). Those sample inputs were removed from the app; restore
+> from git history if you want them back as a regression check.
 
 ## Address auto-fill (`lib/autofill/`)
 Enter an address → `autofillSite()` populates what it can, with a provenance tag
