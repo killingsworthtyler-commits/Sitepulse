@@ -240,6 +240,62 @@ function isCompetitor(p: PlaceLite): boolean {
   return true;
 }
 
+export interface Competitor {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+/** Competing car washes (with coordinates) within `radius` m, for the map.
+    Same filter as the competition count. Returns [] on failure. Needs a key. */
+export async function findCompetitors(
+  lat: number,
+  lng: number,
+  radius: number,
+  key: string,
+): Promise<Competitor[]> {
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask":
+          "places.displayName,places.location,places.primaryType,places.types",
+      },
+      body: JSON.stringify({
+        includedTypes: ["car_wash"],
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: { center: { latitude: lat, longitude: lng }, radius },
+        },
+      }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.places ?? [])
+      .map(
+        (p: {
+          displayName?: { text?: string };
+          location?: { latitude?: number; longitude?: number };
+          primaryType?: string;
+          types?: string[];
+        }): Competitor | null => {
+          const name = p.displayName?.text ?? "";
+          const lt = p.location?.latitude;
+          const lg = p.location?.longitude;
+          if (!name || lt == null || lg == null) return null;
+          const lite: PlaceLite = { name, primaryType: p.primaryType, types: p.types ?? [] };
+          if (!isCompetitor(lite)) return null;
+          return { name, lat: lt, lng: lg };
+        },
+      )
+      .filter(Boolean) as Competitor[];
+  } catch {
+    return [];
+  }
+}
+
 /** Live competition: competing express/automatic car washes within ~3 mi.
     Filters out gas/self-serve/detail washes + our own stores. Null on failure. */
 export async function detectCompetitionPlaces(

@@ -1,6 +1,6 @@
 import type { Variant } from "@/lib/scorecard/modwash";
 import {
-  geocode,
+  geocodeRobust,
   ringBlockGroupGeoids,
   ringDemographics,
   countyGrowth,
@@ -38,7 +38,7 @@ export interface AutofillResult {
 const RING_METERS = 4828; // 3 miles — matches the trade-area magnitude in the data
 
 export async function autofillSite(address: string): Promise<AutofillResult> {
-  const geo = await geocode(address);
+  const geo = await geocodeRobust(address);
   if (!geo) {
     return {
       ok: false,

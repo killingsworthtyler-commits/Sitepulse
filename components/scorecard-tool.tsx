@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   MODWASH_CRITERIA,
   scoreSite,
@@ -294,6 +295,15 @@ export function ScorecardTool({
           </div>
         ) : (
           <p className="px-1 text-[11px] text-slate-400">Live preview.</p>
+        )}
+
+        {(matched || address.trim()) && (
+          <Link
+            href={`/report?address=${encodeURIComponent(matched || address.trim())}`}
+            className="block text-center text-xs font-semibold text-brand-blue hover:underline"
+          >
+            Open shareable site report →
+          </Link>
         )}
       </aside>
     </div>

@@ -42,6 +42,49 @@ export async function geocode(address: string): Promise<GeoResult | null> {
   }
 }
 
+/** OSM Nominatim geocode — a free fallback for addresses the Census geocoder
+    can't match (highway-style addresses like "US-441" are common for sites). */
+async function geocodeOSM(
+  address: string,
+): Promise<{ lat: number; lng: number; matched: string } | null> {
+  const url =
+    "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" +
+    encodeURIComponent(address);
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "SitePulse/1.0 (Hutton site scoring)" },
+    });
+    if (!res.ok) return null;
+    const arr = await res.json();
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    return {
+      lat: Number(arr[0].lat),
+      lng: Number(arr[0].lon),
+      matched: arr[0].display_name ?? address,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Geocode robustly: Census first (precise + FIPS), then OSM + reverse-FIPS for
+    addresses Census can't match. Returns the full GeoResult or null. */
+export async function geocodeRobust(address: string): Promise<GeoResult | null> {
+  const c = await geocode(address);
+  if (c && c.state && c.county) return c;
+  const osm = await geocodeOSM(address);
+  if (!osm) return null;
+  const fips = await geocodeCoords(osm.lat, osm.lng);
+  if (!fips) return null;
+  return {
+    matchedAddress: osm.matched,
+    lat: osm.lat,
+    lng: osm.lng,
+    state: fips.state,
+    county: fips.county,
+  };
+}
+
 /** Reverse-geocode coordinates → FIPS state + county (no address needed). Free.
     Used by site prospecting, where we start from a map point, not an address. */
 export async function geocodeCoords(

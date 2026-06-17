@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { demographicsAction } from "@/app/scorecard/demographics/actions";
 import type { DemographicsReport } from "@/lib/demographics/report";
 
@@ -53,10 +54,18 @@ export function DemographicsReportTool({
           </p>
         )}
         {report?.ok && (
-          <p className="mt-2 text-xs text-slate-500">
-            {report.matchedAddress} · {report.ringMiles}-mi ring (
-            {report.bgCount} block groups) · US Census ACS 5-yr
-          </p>
+          <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              {report.matchedAddress} · {report.ringMiles}-mi ring (
+              {report.bgCount} block groups) · US Census ACS 5-yr
+            </p>
+            <Link
+              href={`/report?address=${encodeURIComponent(address)}`}
+              className="shrink-0 text-xs font-semibold text-brand-blue hover:underline"
+            >
+              Open shareable site report →
+            </Link>
+          </div>
         )}
       </div>
 

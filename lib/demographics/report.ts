@@ -4,63 +4,11 @@
 // approximate vs Experian's custom trade area; the Experian-proprietary pieces
 // (2029 projections, Seasonal Population) are omitted.
 
-import { geocode, geocodeCoords, ringBlockGroupGeoids, countyGrowth } from "@/lib/autofill/census";
+import { geocodeRobust, ringBlockGroupGeoids, countyGrowth } from "@/lib/autofill/census";
 import { getRingJobs } from "@/lib/autofill/lodes";
 
 const RING_METERS = 4828; // 3 miles
 const RING_SQ_MI = Math.PI * 3 * 3; // ~28.3 sq mi (circle of r=3mi)
-
-interface ResolvedLocation {
-  lat: number;
-  lng: number;
-  matched: string;
-  state: string;
-  county: string;
-}
-
-/** OSM Nominatim fallback for addresses the Census geocoder can't match
-    (highway-style addresses like "US-441" are common for car-wash sites). */
-async function geocodeOSM(
-  address: string,
-): Promise<{ lat: number; lng: number; matched: string } | null> {
-  const url =
-    "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=" +
-    encodeURIComponent(address);
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "SitePulse/1.0 (Hutton site scoring)" },
-    });
-    if (!res.ok) return null;
-    const arr = await res.json();
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    return {
-      lat: Number(arr[0].lat),
-      lng: Number(arr[0].lon),
-      matched: arr[0].display_name ?? address,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** Resolve an address to coordinates + FIPS, Census first then OSM. */
-async function resolveLocation(address: string): Promise<ResolvedLocation | null> {
-  const c = await geocode(address);
-  if (c && c.state && c.county) {
-    return {
-      lat: c.lat,
-      lng: c.lng,
-      matched: c.matchedAddress,
-      state: c.state,
-      county: c.county,
-    };
-  }
-  const osm = await geocodeOSM(address);
-  if (!osm) return null;
-  const fips = await geocodeCoords(osm.lat, osm.lng);
-  if (!fips) return null;
-  return { lat: osm.lat, lng: osm.lng, matched: osm.matched, ...fips };
-}
 
 export interface DemoRow {
   label: string;
@@ -215,8 +163,8 @@ export async function fetchDemographicsReport(
     return { ok: false, error: "CENSUS_API_KEY is not configured on the server." };
   }
 
-  const loc = await resolveLocation(address);
-  if (!loc) {
+  const loc = await geocodeRobust(address);
+  if (!loc || !loc.state || !loc.county) {
     return { ok: false, error: "Couldn't find that address. Check the spelling and try again." };
   }
   const fips = { state: loc.state, county: loc.county };
@@ -377,7 +325,7 @@ export async function fetchDemographicsReport(
 
   return {
     ok: true,
-    matchedAddress: loc.matched,
+    matchedAddress: loc.matchedAddress,
     lat: loc.lat,
     lng: loc.lng,
     bgCount: geoids.length,
