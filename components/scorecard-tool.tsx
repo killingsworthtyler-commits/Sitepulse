@@ -12,7 +12,7 @@ import {
   type Criterion,
 } from "@/lib/scorecard/modwash";
 import { GradeBadge } from "@/components/badges";
-import { autofillAction } from "@/app/tenants/[id]/scorecard/actions";
+import { autofillAction } from "@/app/scorecard/actions";
 
 interface AutoMeta {
   source: string;

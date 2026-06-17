@@ -35,7 +35,7 @@ as a regression check — if a model change breaks these, the change is wrong.
 
 ## Address auto-fill (`lib/autofill/`)
 Enter an address → `autofillSite()` populates what it can, with a provenance tag
-per field (`data` / `estimate` / `mock`). Server action: `app/tenants/[id]/scorecard/actions.ts`.
+per field (`data` / `estimate` / `mock`). Server action: `app/scorecard/actions.ts`.
 
 | Field | Source | Status |
 |---|---|---|

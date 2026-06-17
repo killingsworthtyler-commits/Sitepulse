@@ -29,7 +29,7 @@ Node 20+ (CI/deploy pinned to 22 via `.node-version` / `render.yaml`).
 On Render these are set in the dashboard (the repo `render.yaml` declares them `sync:false`).
 
 ## Repo map
-- `app/` — routes. `/` dashboard · `/tenants` · `/tenants/[id]` · `/tenants/[id]/scorecard`.
+- `app/` — routes. `/` dashboard · `/scorecard` (model + Score-a-Site tool) · `/prospect` (Site Finder map).
 - `components/` — UI (sidebar, badges, stat-card, stage-pipeline, projects-view, scorecard-tool).
 - `lib/` — domain model + data: `types`, `stages`, `teams`, `health`, `format`, `data` (projects).
 - `lib/scorecard/` — ModWash scoring engine (`modwash.ts`) + validated sample sites.
