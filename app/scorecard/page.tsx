@@ -1,5 +1,6 @@
 import { MODWASH_CRITERIA } from "@/lib/scorecard/modwash";
 import { ScorecardWorkbench } from "@/components/scorecard-workbench";
+import { ScorecardTabs } from "@/components/scorecard-tabs";
 
 export const metadata = {
   title: "Scorecard — SITE PULSE",
@@ -17,6 +18,8 @@ export default function ScorecardPage() {
           demographics, and site quality.
         </p>
       </header>
+
+      <ScorecardTabs />
 
       {/* Model reference — collapsed by default to keep the focus on scorecards */}
       <details className="group mb-6 rounded-lg border border-slate-200 bg-white ring-1 ring-slate-900/[0.02]">
