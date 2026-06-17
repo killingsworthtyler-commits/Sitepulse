@@ -51,3 +51,23 @@
   background-clip: text;
   color: transparent;
 }
+
+/* Print / Save-as-PDF: drop the app chrome and keep colors + cards intact. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { buildSiteReport } from "@/lib/report/build";
 import { ReportMap } from "@/components/report-map";
 import { ShareButton } from "@/components/share-button";
+import { PrintButton } from "@/components/print-button";
 import { GradeBadge } from "@/components/badges";
 
 export const metadata = {
@@ -78,7 +79,10 @@ export default async function ReportPage({
             {report.matchedAddress} · {report.competitors?.length ?? 0} competing washes within 3 mi
           </p>
         </div>
-        <ShareButton subject={`ModWash Site Report — ${title}`} />
+        <div className="no-print flex flex-wrap gap-2">
+          <PrintButton />
+          <ShareButton subject={`ModWash Site Report — ${title}`} />
+        </div>
       </div>
 
       {/* Score banner */}

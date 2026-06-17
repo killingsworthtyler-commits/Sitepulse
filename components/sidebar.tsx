@@ -19,7 +19,7 @@ export function Sidebar() {
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-ink-line bg-ink px-4 py-6 md:flex">
+    <aside className="no-print hidden w-60 shrink-0 flex-col border-r border-ink-line bg-ink px-4 py-6 md:flex">
       <div className="flex items-center gap-2.5 px-2">
         <PulseMark />
         <div className="leading-none">
