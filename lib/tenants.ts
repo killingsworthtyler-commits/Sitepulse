@@ -25,42 +25,6 @@ const TENANTS: Tenant[] = [
       "Hutton-owned express car wash brand. Site selection runs on a weighted scorecard scored across traffic, competition, demographics, and site quality.",
     projectKey: "ModWash",
   },
-  {
-    id: "chick-fil-a",
-    name: "Chick-fil-A",
-    category: "Quick-Service Restaurant",
-    owned: false,
-    hasScorecard: false,
-    blurb: "QSR outparcel development.",
-    projectKey: "Chick-fil-A",
-  },
-  {
-    id: "racetrac",
-    name: "RaceTrac",
-    category: "Convenience / Fuel",
-    owned: false,
-    hasScorecard: false,
-    blurb: "Convenience and fuel center development.",
-    projectKey: "RaceTrac",
-  },
-  {
-    id: "tennova",
-    name: "Tennova Health",
-    category: "Medical Office",
-    owned: false,
-    hasScorecard: false,
-    blurb: "Medical office building development.",
-    projectKey: "Tennova Health",
-  },
-  {
-    id: "retail",
-    name: "Multi-tenant Retail",
-    category: "Retail Center",
-    owned: false,
-    hasScorecard: false,
-    blurb: "Multi-tenant retail center development.",
-    projectKey: "Multi-tenant Retail",
-  },
 ];
 
 export async function getTenants(): Promise<Tenant[]> {

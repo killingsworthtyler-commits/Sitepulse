@@ -27,8 +27,8 @@ handoff; the projects table has a team filter.
 `lib/data.ts` holds projects as an in-memory array behind **async accessors**
 (`getProjects`, `getProject`). `lib/tenants.ts` holds tenants similarly. Async
 signatures are intentional: swapping the array for Supabase/Postgres later won't
-change any call sites or UI. Seed data uses real ModWash prospect sites plus
-representative Hutton projects (CFA, RaceTrac, Tennova, retail).
+change any call sites or UI. Seed data is ModWash only — the project pipeline
+mirrors ModWash site-selection and development work.
 
 ## Routing (App Router)
 - `/` — Development Pulse dashboard (KPIs, team pipeline, projects table).

@@ -2,8 +2,8 @@ import type { Project } from "./types";
 
 // Seed data layer. This is intentionally a single source of truth behind simple
 // accessor functions so we can swap the in-memory array for Supabase/Postgres
-// later without changing any UI code. Several entries use real ModWash prospect
-// sites from the scorecard data so the dashboard reflects live work.
+// later without changing any UI code. ModWash projects only — the pipeline
+// mirrors ModWash site-selection and development work.
 const PROJECTS: Project[] = [
   {
     id: "mw-wpb",
@@ -76,34 +76,6 @@ const PROJECTS: Project[] = [
     updatedAt: "2026-06-09",
   },
   {
-    id: "rt-stonebridge",
-    name: "Shoppes at Stonebridge",
-    tenant: "Multi-tenant Retail",
-    city: "Murfreesboro",
-    state: "TN",
-    stage: "design",
-    health: "at_risk",
-    progress: 47,
-    owner: "Marcus Webb",
-    value: 12_400_000,
-    nextMilestone: { label: "DD set to GC for pricing", date: "2026-06-27" },
-    updatedAt: "2026-06-13",
-  },
-  {
-    id: "cfa-chatt",
-    name: "Chick-fil-A — Gunbarrel Rd",
-    tenant: "Chick-fil-A",
-    city: "Chattanooga",
-    state: "TN",
-    stage: "permitting",
-    health: "on_track",
-    progress: 62,
-    owner: "Tyler Killingsworth",
-    value: 2_700_000,
-    nextMilestone: { label: "Building permit issued", date: "2026-06-24" },
-    updatedAt: "2026-06-14",
-  },
-  {
     id: "mw-rockymount",
     name: "ModWash — Rocky Mount",
     tenant: "ModWash",
@@ -118,20 +90,6 @@ const PROJECTS: Project[] = [
     updatedAt: "2026-06-12",
   },
   {
-    id: "rtc-knox",
-    name: "RaceTrac — Kingston Pike",
-    tenant: "RaceTrac",
-    city: "Knoxville",
-    state: "TN",
-    stage: "construction",
-    health: "on_track",
-    progress: 84,
-    owner: "Marcus Webb",
-    value: 6_300_000,
-    nextMilestone: { label: "Canopy + fuel system set", date: "2026-06-26" },
-    updatedAt: "2026-06-14",
-  },
-  {
     id: "mw-smithfield",
     name: "ModWash — Smithfield",
     tenant: "ModWash",
@@ -144,20 +102,6 @@ const PROJECTS: Project[] = [
     value: 4_400_000,
     nextMilestone: { label: "Tunnel equipment install", date: "2026-06-23" },
     updatedAt: "2026-06-13",
-  },
-  {
-    id: "med-cleveland",
-    name: "Cleveland Medical Office",
-    tenant: "Tennova Health",
-    city: "Cleveland",
-    state: "TN",
-    stage: "closeout",
-    health: "on_track",
-    progress: 96,
-    owner: "Sarah Chen",
-    value: 7_800_000,
-    nextMilestone: { label: "Certificate of Occupancy", date: "2026-06-19" },
-    updatedAt: "2026-06-14",
   },
   {
     id: "mw-jax",
