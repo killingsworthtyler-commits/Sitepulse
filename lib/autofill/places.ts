@@ -64,6 +64,80 @@ interface PlaceLite {
   types: string[];
 }
 
+export interface Anchor {
+  name: string;
+  lat: number;
+  lng: number;
+  /** Traffic-driver grade from the scorecard rubric (A best → D). */
+  grade: "A" | "B" | "C" | "D";
+  primaryType?: string;
+}
+
+const ANCHOR_TYPES = [
+  "supermarket", "grocery_store", "department_store", "home_improvement_store",
+  "discount_store", "warehouse_store", "shopping_mall",
+];
+
+/** Retail anchors within `radius` m of a point, each with its location + grade.
+    These are the candidate sites for prospecting — a car wash wants to sit by a
+    strong traffic driver. Returns [] on failure. Needs a key. */
+export async function findAnchors(
+  lat: number,
+  lng: number,
+  radius: number,
+  key: string,
+): Promise<Anchor[]> {
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask":
+          "places.displayName,places.location,places.primaryType,places.types",
+      },
+      body: JSON.stringify({
+        includedTypes: ANCHOR_TYPES,
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: { center: { latitude: lat, longitude: lng }, radius },
+        },
+      }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.places ?? [])
+      .map(
+        (p: {
+          displayName?: { text?: string };
+          location?: { latitude?: number; longitude?: number };
+          primaryType?: string;
+          types?: string[];
+        }): Anchor | null => {
+          const lt = p.location?.latitude;
+          const lg = p.location?.longitude;
+          const name = p.displayName?.text ?? "";
+          if (lt == null || lg == null || !name) return null;
+          const lite: PlaceLite = {
+            name,
+            primaryType: p.primaryType,
+            types: p.types ?? [],
+          };
+          return {
+            name,
+            lat: lt,
+            lng: lg,
+            grade: gradeAnchor(lite),
+            primaryType: p.primaryType,
+          };
+        },
+      )
+      .filter(Boolean) as Anchor[];
+  } catch {
+    return [];
+  }
+}
+
 async function searchNearby(
   lat: number,
   lng: number,

@@ -42,6 +42,27 @@ export async function geocode(address: string): Promise<GeoResult | null> {
   }
 }
 
+/** Reverse-geocode coordinates → FIPS state + county (no address needed). Free.
+    Used by site prospecting, where we start from a map point, not an address. */
+export async function geocodeCoords(
+  lat: number,
+  lng: number,
+): Promise<{ state: string; county: string } | null> {
+  const url =
+    "https://geocoding.geo.census.gov/geocoder/geographies/coordinates" +
+    `?x=${lng}&y=${lat}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const county = data?.result?.geographies?.["Counties"]?.[0];
+    if (!county?.STATE || !county?.COUNTY) return null;
+    return { state: county.STATE, county: county.COUNTY };
+  } catch {
+    return null;
+  }
+}
+
 /** Census block-group GEOIDs (12-digit) within `meters` of the point. Free.
     Block groups hug a radius ring far better than whole tracts. */
 export async function ringBlockGroupGeoids(
