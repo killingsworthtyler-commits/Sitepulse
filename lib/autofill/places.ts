@@ -197,7 +197,51 @@ function classifyCarWashQuality(names: string[]): string {
   return "One-Off Operator";
 }
 
-/** Live competition: car washes within ~3 mi. Returns null on failure. */
+// A Places "car_wash" search returns every kind of wash — gas-station bays,
+// self-serve/coin, hand washes, mobile detailers, and our own ModWash stores.
+// The scorecard's "competition" means the standalone express/automatic washes
+// we actually compete with, so we drop the rest before counting.
+const OWN_BRANDS = ["modwash", "mod wash"];
+// A primary type that alone means "not an express competitor".
+const NON_COMPETITOR_PRIMARY = new Set([
+  "gas_station",
+  "convenience_store",
+  "service", // mobile detailers
+]);
+// Secondary types that flag a gas/convenience site even when primary = car_wash.
+// NOT "service" — Google tags *every* establishment with it, so it can't filter.
+const NON_COMPETITOR_TYPE = new Set(["gas_station", "convenience_store"]);
+const NON_COMPETITOR_NAME = [
+  // self-serve / coin / hand / detail / mobile — not express tunnels
+  "self serve", "self-serve", "self service", "self-service",
+  "coin", "hand wash", "hand car wash", "detail", "mobile",
+  "u-wash", "u wash", "do it yourself", "do-it-yourself",
+  "spot free", "spot-free", "in bay", "in-bay",
+  // gas / convenience brands that still come back typed car_wash
+  "circle k", "amoco", "exxon", "shell", "marathon", "speedway",
+  "wawa", "sheetz", "racetrac", "quiktrip", "kwik trip", "murphy",
+  "sunoco", "valero", "chevron", "7-eleven",
+];
+
+/** True if a "car_wash" result is a real express/automatic competitor (not a
+    gas-station bay, self-serve/coin, detailer, or one of our own stores). */
+// Unbranded "Car Wash" pins are almost always self-serve/coin bays — a real
+// express competitor carries a brand name.
+const GENERIC_NAMES = new Set(["car wash", "carwash", "the car wash", "car wash."]);
+
+function isCompetitor(p: PlaceLite): boolean {
+  const n = p.name.toLowerCase().trim();
+  if (!n) return false;
+  if (GENERIC_NAMES.has(n)) return false;
+  if (OWN_BRANDS.some((b) => n.includes(b))) return false;
+  if (NON_COMPETITOR_PRIMARY.has(p.primaryType ?? "")) return false;
+  if (p.types.some((t) => NON_COMPETITOR_TYPE.has(t))) return false;
+  if (NON_COMPETITOR_NAME.some((k) => n.includes(k))) return false;
+  return true;
+}
+
+/** Live competition: competing express/automatic car washes within ~3 mi.
+    Filters out gas/self-serve/detail washes + our own stores. Null on failure. */
 export async function detectCompetitionPlaces(
   lat: number,
   lng: number,
@@ -205,7 +249,7 @@ export async function detectCompetitionPlaces(
 ): Promise<{ count: number; quality: string } | null> {
   const places = await searchNearby(lat, lng, 4828, ["car_wash"], key);
   if (places === null) return null;
-  const names = places.map((p) => p.name).filter(Boolean);
+  const names = places.filter(isCompetitor).map((p) => p.name).filter(Boolean);
   return { count: names.length, quality: classifyCarWashQuality(names) };
 }
 
