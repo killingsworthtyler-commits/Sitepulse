@@ -1,13 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  APIProvider,
-  Map,
-  Marker,
-  useMap,
-  useMapsLibrary,
-} from "@vis.gl/react-google-maps";
+import { APIProvider, Map, Marker, useMap } from "@vis.gl/react-google-maps";
 import { searchAreaAction } from "@/app/prospect/actions";
 import type { Candidate, SearchAreaResult } from "@/lib/prospect/types";
 import type { HeatPoint } from "@/lib/prospect/heatmap";
@@ -134,7 +128,7 @@ function Finder({
               zIndex={selected === c.id ? 100 : 40}
             />
           ))}
-          <Heatmap points={result?.heatmap ?? []} />
+          <DensityLayer points={result?.heatmap ?? []} />
         </Map>
 
         <button
@@ -212,16 +206,6 @@ function Finder({
       </aside>
     </div>
   );
-}
-
-// Minimal shape of google.maps.visualization.HeatmapLayer — the bundled types
-// for the visualization library are incomplete, so we describe what we use.
-interface HeatLayer {
-  setMap(map: google.maps.Map | null): void;
-  setData(data: { location: google.maps.LatLng; weight: number }[]): void;
-}
-interface VisualizationLib {
-  HeatmapLayer: new (opts: { radius?: number; opacity?: number }) => HeatLayer;
 }
 
 /** A cluster bubble icon (count rendered via the marker label). */
@@ -341,33 +325,46 @@ function ClusteredSites({
   return null;
 }
 
-/** Google Maps heatmap layer, driven by the population points. */
-function Heatmap({ points }: { points: HeatPoint[] }) {
+// Population-density layer. Google removed the visualization HeatmapLayer in
+// Maps JS v3.65, so we build the "market strength" surface from core
+// google.maps.Circle: one translucent, weight-colored circle per block group.
+// Overlapping circles read as a density field — and nothing is deprecated.
+function DensityLayer({ points }: { points: HeatPoint[] }) {
   const map = useMap("finder");
-  const vis = useMapsLibrary("visualization") as unknown as VisualizationLib | null;
-  const layerRef = useRef<HeatLayer | null>(null);
+  const circlesRef = useRef<google.maps.Circle[]>([]);
 
   useEffect(() => {
-    if (!map || !vis) return;
-    if (!layerRef.current) {
-      layerRef.current = new vis.HeatmapLayer({ radius: 30, opacity: 0.55 });
-      layerRef.current.setMap(map);
-    }
-    layerRef.current.setData(
-      points.map((p) => ({
-        location: new google.maps.LatLng(p.lat, p.lng),
-        weight: p.weight,
-      })),
-    );
-  }, [map, vis, points]);
+    if (!map) return;
+    circlesRef.current.forEach((c) => c.setMap(null));
+    circlesRef.current = [];
+    if (points.length === 0) return;
 
-  useEffect(
-    () => () => {
-      layerRef.current?.setMap(null);
-      layerRef.current = null;
-    },
-    [],
-  );
+    // Cap for performance; the densest block groups carry the signal.
+    const top = [...points].sort((a, b) => b.weight - a.weight).slice(0, 300);
+    const max = Math.max(...top.map((p) => p.weight)) || 1;
+
+    for (const p of top) {
+      const t = Math.min(1, p.weight / max); // 0..1
+      const color = t > 0.66 ? "#ef4444" : t > 0.33 ? "#f59e0b" : "#3b82f6";
+      circlesRef.current.push(
+        new google.maps.Circle({
+          map,
+          center: { lat: p.lat, lng: p.lng },
+          radius: 700 + t * 1000,
+          strokeWeight: 0,
+          fillColor: color,
+          fillOpacity: 0.16 + t * 0.22,
+          clickable: false,
+          zIndex: 1,
+        }),
+      );
+    }
+
+    return () => {
+      circlesRef.current.forEach((c) => c.setMap(null));
+      circlesRef.current = [];
+    };
+  }, [map, points]);
 
   return null;
 }
