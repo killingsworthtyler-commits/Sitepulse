@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   APIProvider,
   Map,
@@ -101,6 +101,14 @@ function Finder({
     if ((map?.getZoom() ?? 0) < 13) map?.setZoom(14);
   }
 
+  const pickSite = useCallback(
+    (s: OperationalSite) => {
+      map?.panTo({ lat: s.lat, lng: s.lng });
+      if ((map?.getZoom() ?? 0) < 12) map?.setZoom(13);
+    },
+    [map],
+  );
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       {/* ---------------- Map ---------------- */}
@@ -115,15 +123,7 @@ function Finder({
           clickableIcons={false}
           style={{ width: "100%", height: "100%" }}
         >
-          {sites.map((s) => (
-            <Marker
-              key={s.code}
-              position={{ lat: s.lat, lng: s.lng }}
-              icon={SITE_DOT}
-              title={`${s.name} (${s.code}) — ${s.city}, ${s.state}`}
-              zIndex={20}
-            />
-          ))}
+          <ClusteredSites sites={sites} onPick={pickSite} />
           {candidates.map((c) => (
             <Marker
               key={c.id}
@@ -222,6 +222,123 @@ interface HeatLayer {
 }
 interface VisualizationLib {
   HeatmapLayer: new (opts: { radius?: number; opacity?: number }) => HeatLayer;
+}
+
+/** A cluster bubble icon (count rendered via the marker label). */
+function clusterIcon(count: number): google.maps.Icon {
+  const r = count < 10 ? 17 : count < 50 ? 21 : 25;
+  const size = r * 2;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+    `<circle cx="${r}" cy="${r}" r="${r - 3}" fill="#00b3ff" fill-opacity="0.92" stroke="white" stroke-width="2.5"/>` +
+    `</svg>`;
+  return {
+    url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
+    scaledSize: new google.maps.Size(size, size),
+    anchor: new google.maps.Point(r, r),
+    labelOrigin: new google.maps.Point(r, r),
+  };
+}
+
+const SITE_ICON = (): google.maps.Icon => ({
+  url: SITE_DOT,
+  scaledSize: new google.maps.Size(14, 14),
+  anchor: new google.maps.Point(7, 7),
+});
+
+/** Dependency-free marker clustering for the operational sites. Re-clusters on
+    every map idle by grouping points within a pixel radius at the current zoom. */
+function ClusteredSites({
+  sites,
+  onPick,
+}: {
+  sites: OperationalSite[];
+  onPick?: (s: OperationalSite) => void;
+}) {
+  const map = useMap("finder");
+  const markersRef = useRef<google.maps.Marker[]>([]);
+
+  useEffect(() => {
+    if (!map) return;
+    let raf = 0;
+
+    const clear = () => {
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = [];
+    };
+
+    const render = () => {
+      const proj = map.getProjection();
+      const zoom = map.getZoom();
+      if (!proj || zoom == null) return;
+      clear();
+      const scale = Math.pow(2, zoom);
+      const RADIUS = 54; // px — merge sites closer than this on screen
+      const pts = sites.map((s) => {
+        const wp = proj.fromLatLngToPoint(new google.maps.LatLng(s.lat, s.lng));
+        return { s, px: (wp?.x ?? 0) * scale, py: (wp?.y ?? 0) * scale, used: false };
+      });
+
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].used) continue;
+        const group = [pts[i]];
+        pts[i].used = true;
+        for (let j = i + 1; j < pts.length; j++) {
+          if (pts[j].used) continue;
+          const dx = pts[i].px - pts[j].px;
+          const dy = pts[i].py - pts[j].py;
+          if (dx * dx + dy * dy <= RADIUS * RADIUS) {
+            group.push(pts[j]);
+            pts[j].used = true;
+          }
+        }
+
+        if (group.length === 1) {
+          const s = group[0].s;
+          const m = new google.maps.Marker({
+            position: { lat: s.lat, lng: s.lng },
+            map,
+            icon: SITE_ICON(),
+            title: `${s.name} (${s.code}) — ${s.city}, ${s.state}`,
+            zIndex: 20,
+          });
+          if (onPick) m.addListener("click", () => onPick(s));
+          markersRef.current.push(m);
+        } else {
+          const lat = group.reduce((a, g) => a + g.s.lat, 0) / group.length;
+          const lng = group.reduce((a, g) => a + g.s.lng, 0) / group.length;
+          const count = group.length;
+          const m = new google.maps.Marker({
+            position: { lat, lng },
+            map,
+            icon: clusterIcon(count),
+            label: { text: String(count), color: "white", fontSize: "12px", fontWeight: "700" },
+            title: `${count} sites`,
+            zIndex: 30,
+          });
+          m.addListener("click", () => {
+            map.panTo({ lat, lng });
+            map.setZoom(Math.min(zoom + 2, 16));
+          });
+          markersRef.current.push(m);
+        }
+      }
+    };
+
+    const onIdle = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(render);
+    };
+    const listener = map.addListener("idle", onIdle);
+    render();
+    return () => {
+      listener.remove();
+      cancelAnimationFrame(raf);
+      clear();
+    };
+  }, [map, sites, onPick]);
+
+  return null;
 }
 
 /** Google Maps heatmap layer, driven by the population points. */
