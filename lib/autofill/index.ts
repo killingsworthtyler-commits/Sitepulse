@@ -6,6 +6,7 @@ import {
   countyGrowth,
 } from "./census";
 import { getRingJobs } from "./lodes";
+import { nearestAadt } from "./aadt";
 import { estimateSnowDays, suggestVariant } from "./climate";
 import {
   detectCompetition,
@@ -50,6 +51,19 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
 
   const fields: Record<string, AutofillField> = {};
   const warnings: string[] = [];
+
+  // Traffic count (AADT) — FHWA national HPMS layer (free, no key).
+  const aadt = await nearestAadt(geo.lat, geo.lng);
+  if (aadt) {
+    const road = aadt.routeName ? ` on ${aadt.routeName}` : "";
+    const yr = aadt.year ? ` (${aadt.year})` : "";
+    fields.trafficCount = {
+      value: aadt.aadt,
+      source: `FHWA HPMS — nearest segment${road}${yr}`,
+      confidence: "estimate",
+      note: "Highest AADT within ~250m (the frontage road). National HPMS lags ~2–3 yrs and skips many local roads — confirm against the state DOT for the exact segment.",
+    };
+  }
 
   // Climate + variant (free, latitude heuristic)
   fields.snowDays = {
@@ -172,7 +186,9 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
   }
 
   warnings.push(
-    "Traffic count and the physical site fields (visibility, ingress, layout) still need manual entry.",
+    aadt
+      ? "The physical site fields (visibility, ingress, layout) still need manual entry."
+      : "Traffic count and the physical site fields (visibility, ingress, layout) still need manual entry.",
   );
 
   return {

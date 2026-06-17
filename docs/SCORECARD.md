@@ -44,8 +44,9 @@ per field (`data` / `estimate` / `mock`). Server action: `app/tenants/[id]/score
 | Daytime population | ACS + **LODES** jobs (`lodes.ts`, cached per state) | ✅ estimate |
 | Projected growth | ACS county 5-yr annualized trend | ✅ estimate |
 | Snow days | latitude heuristic | ✅ estimate |
-| Competition count, quality, traffic-driver | **MOCK** (`places.ts`) — pending Google Places | 🟡 |
-| Traffic count (AADT), visibility, ingress, layout | manual / site visit | ⬜ |
+| Competition count, quality, traffic-driver | Google Places API New (`places.ts`) | ✅ needs `GOOGLE_MAPS_API_KEY` |
+| Traffic count (AADT) | FHWA **HPMS** national ArcGIS layer (`aadt.ts`) — max within ~250m | ✅ estimate, no key |
+| Visibility, ingress, layout | manual / site visit | ⬜ |
 
 ### Accuracy caveat (important)
 Concentric ACS rings read **~20–30% higher** than Experian's *custom* trade-area
@@ -62,8 +63,8 @@ apportionment (clip geographies to the circle). Fields are tagged + noted to rev
 - LODES WAC files: `lehd.ces.census.gov/data/lodes/LODES8/<st>/wac/<st>_wac_S000_JT00_<year>.csv.gz` (~small; `w_geocode` = 15-digit block, `C000` = total jobs). Daytime pop = residents + jobs-in-ring − employed residents.
 
 ## Next on automation
-1. **Google Places** — real competition (count + classify chains as National Express) and traffic-driver grade (anchors → A/B/C/D using the rubric in the sheet). Biggest remaining lever (incl. the ×5 Competition).
-2. Default Site Layout to the ModWash prototype (3+/18+/Yes).
-3. Traffic counts (AADT) from state DOT.
+1. ✅ **Google Places** — real competition (count + classify chains as National Express) and traffic-driver grade (anchors → A/B/C/D). Done; needs `GOOGLE_MAPS_API_KEY`.
+2. ✅ **Traffic counts (AADT)** — FHWA HPMS national layer (`aadt.ts`), highest count within ~250m as the frontage road. Done; no key. HPMS `SPEED_LIMIT` is also available to seed the Visibility traffic-speed field later.
+3. Default Site Layout to the ModWash prototype (3+/18+/Yes).
 4. Save scored sites (needs a DB).
 5. Other tenants' scorecard models.
