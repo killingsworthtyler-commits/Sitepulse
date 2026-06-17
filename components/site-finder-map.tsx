@@ -11,7 +11,7 @@ import {
 import { searchAreaAction } from "@/app/prospect/actions";
 import type { Candidate, SearchAreaResult } from "@/lib/prospect/types";
 import type { HeatPoint } from "@/lib/prospect/heatmap";
-import type { MappedSite } from "@/lib/prospect/sites";
+import type { OperationalSite } from "@/lib/prospect/locations";
 import { GradeBadge } from "@/components/badges";
 
 const GRADE_COLOR: Record<string, string> = {
@@ -20,7 +20,7 @@ const GRADE_COLOR: Record<string, string> = {
   C: "#f43f5e",
 };
 
-/** A teardrop pin as an SVG data-URI, so we don't depend on `google` at render. */
+/** A lettered teardrop pin (candidates), as an SVG data-URI. */
 function pinUri(fill: string, label: string): string {
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">` +
@@ -30,13 +30,21 @@ function pinUri(fill: string, label: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+/** A small solid dot (operational sites) — distinct from the lettered candidate pins. */
+const SITE_DOT =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">` +
+      `<circle cx="8" cy="8" r="6" fill="#14161b" stroke="white" stroke-width="2"/></svg>`,
+  );
+
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 export function SiteFinderMap({
   sites,
   center,
 }: {
-  sites: MappedSite[];
+  sites: OperationalSite[];
   center: { lat: number; lng: number };
 }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -64,7 +72,7 @@ function Finder({
   sites,
   center,
 }: {
-  sites: MappedSite[];
+  sites: OperationalSite[];
   center: { lat: number; lng: number };
 }) {
   const map = useMap("finder");
@@ -100,7 +108,7 @@ function Finder({
         <Map
           id="finder"
           defaultCenter={center}
-          defaultZoom={11}
+          defaultZoom={6}
           gestureHandling="greedy"
           disableDefaultUI={false}
           mapTypeControl
@@ -109,11 +117,11 @@ function Finder({
         >
           {sites.map((s) => (
             <Marker
-              key={s.id}
+              key={s.code}
               position={{ lat: s.lat, lng: s.lng }}
-              icon={pinUri("#14161b", s.grade)}
-              title={`${s.name} — existing site (${s.grade}, ${Math.round(s.percent * 100)}%)`}
-              zIndex={50}
+              icon={SITE_DOT}
+              title={`${s.name} (${s.code}) — ${s.city}, ${s.state}`}
+              zIndex={20}
             />
           ))}
           {candidates.map((c) => (

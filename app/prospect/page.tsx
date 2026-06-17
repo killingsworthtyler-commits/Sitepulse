@@ -1,7 +1,7 @@
-import { getProspectSites } from "@/lib/prospect/sites";
+import { getOperationalSites } from "@/lib/prospect/locations";
 import { SiteFinderMap } from "@/components/site-finder-map";
 
-// Default to roughly the center of the known sites, falling back to Charlotte.
+// Default to roughly the center of the operational footprint.
 function centerOf(sites: { lat: number; lng: number }[]): { lat: number; lng: number } {
   if (sites.length === 0) return { lat: 35.2271, lng: -80.8431 };
   const lat = sites.reduce((a, s) => a + s.lat, 0) / sites.length;
@@ -10,7 +10,7 @@ function centerOf(sites: { lat: number; lng: number }[]): { lat: number; lng: nu
 }
 
 export default async function ProspectPage() {
-  const sites = await getProspectSites();
+  const sites = getOperationalSites();
   const center = centerOf(sites);
 
   return (
@@ -20,9 +20,9 @@ export default async function ProspectPage() {
           Site Finder
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Pan to a market and scan for candidate sites near strong retail anchors.
-          Each is auto-scored on the same metrics as the scorecard — traffic,
-          competition, and market.
+          {sites.length} operational ModWash sites mapped. Pan to a market and
+          scan for candidate sites near strong retail anchors — each auto-scored
+          on the same metrics as the scorecard.
         </p>
       </div>
 
