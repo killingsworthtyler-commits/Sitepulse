@@ -17,6 +17,7 @@ import { generateReasoning, type Reasoning } from "@/lib/ai/reasoning";
 import { gatherSiteMetrics, type SiteMetrics } from "@/lib/prospect/metrics";
 import { desktopScore } from "@/lib/prospect/score";
 import { fetchDemographicsReport, type DemographicsReport } from "@/lib/demographics/report";
+import { type DealType, ONSITE_M, metersBetween } from "@/lib/deal";
 import type { Grade } from "@/lib/scorecard/modwash";
 
 const COMP_RADIUS = 4828; // 3 miles
@@ -55,16 +56,23 @@ export interface SiteReport {
   /** AI analyst narrative (only when ANTHROPIC_API_KEY is configured). */
   reasoning?: Reasoning;
   demographics?: DemographicsReport;
+  /** Build (greenfield) vs acquisition (buying an existing wash). */
+  dealType?: DealType;
+  /** For an acquisition: the existing on-site wash being bought (excluded from competition). */
+  target?: { name: string; type: string } | null;
 }
 
-export async function buildSiteReport(address: string): Promise<SiteReport> {
+export async function buildSiteReport(
+  address: string,
+  dealType: DealType = "build",
+): Promise<SiteReport> {
   const loc = await geocodeRobust(address);
   if (!loc || !loc.state || !loc.county) {
     return { ok: false, address, error: "Couldn't find that address. Check the spelling and try again." };
   }
 
   const gKey = process.env.GOOGLE_MAPS_API_KEY;
-  const [metrics, competitors, washes, demographics, ringRadiusM, analogVars] = await Promise.all([
+  const [rawMetrics, allCompetitors, washes, demographics, ringRadiusM, analogVars] = await Promise.all([
     gatherSiteMetrics(loc.lat, loc.lng),
     gKey ? findCompetitors(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
     gKey ? findCarWashesTyped(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
@@ -72,6 +80,27 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
     popRingRadiusMeters(loc.lat, loc.lng),
     analogVariables(loc.lat, loc.lng),
   ]);
+
+  // Acquisition: the wash sitting on the address is the asset being bought, not a
+  // competitor. Detect it (nearest wash within ~0.12 mi), drop it from the
+  // competitor count, and re-score so the deal isn't penalized for its own asset.
+  const onSiteWashes = washes.filter(
+    (w) => metersBetween(loc.lat, loc.lng, w.lat, w.lng) <= ONSITE_M,
+  );
+  const target =
+    dealType === "acquisition" && onSiteWashes.length > 0
+      ? { name: onSiteWashes[0].name, type: onSiteWashes[0].type }
+      : null;
+
+  const onSiteCompetitors = target
+    ? allCompetitors.filter((c) => metersBetween(loc.lat, loc.lng, c.lat, c.lng) <= ONSITE_M)
+    : [];
+  const competitors = target
+    ? allCompetitors.filter((c) => metersBetween(loc.lat, loc.lng, c.lat, c.lng) > ONSITE_M)
+    : allCompetitors;
+  const metrics: SiteMetrics = target
+    ? { ...rawMetrics, competition: Math.max(0, rawMetrics.competition - onSiteCompetitors.length) }
+    : rawMetrics;
 
   const score = desktopScore(metrics);
   const cannibalization = findCannibalization(loc.lat, loc.lng, ringRadiusM);
@@ -88,6 +117,8 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
   const reasoning =
     (await generateReasoning({
       matchedAddress: loc.matchedAddress ?? address,
+      dealType,
+      target,
       variant: metrics.variant,
       scorePercent: score.percent,
       grade: score.grade,
@@ -130,5 +161,7 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
     analogs,
     reasoning,
     demographics,
+    dealType,
+    target,
   };
 }

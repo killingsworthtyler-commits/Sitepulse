@@ -13,6 +13,10 @@ const DEFAULT_MODEL = "claude-opus-4-8";
 
 export interface ReasoningInput {
   matchedAddress: string;
+  /** "build" = greenfield; "acquisition" = buying the existing on-site wash. */
+  dealType: "build" | "acquisition";
+  /** The on-site wash being acquired (acquisition only); excluded from competition. */
+  target: { name: string; type: string } | null;
   variant: string;
   scorePercent: number; // 0–1
   grade: string;
@@ -78,7 +82,7 @@ const TOOL = {
   },
 } as const;
 
-const SYSTEM =
+const SYSTEM_BASE =
   "You are a senior retail site-selection analyst evaluating locations for ModWash, " +
   "an express (exterior-only, conveyor) car wash. You assess sites the way a firm like " +
   "GrowthFactor does: tie every judgment to the numbers provided. Use ONLY the data in " +
@@ -87,6 +91,27 @@ const SYSTEM =
   "household income, real population growth, a nearby retail traffic driver, and limited " +
   "direct express competition. Be specific and concise; cite the actual figures. Record " +
   "your assessment by calling the site_assessment tool.";
+
+const BUILD_NOTE =
+  " This is a NEW-BUILD (greenfield) evaluation: ModWash would construct a new wash here. " +
+  "Judge whether the market can support entering it — white space, competitive density, and demand.";
+
+function acquisitionNote(target: { name: string; type: string } | null): string {
+  const asset = target ? `the existing wash on site ("${target.name}", ${target.type})` : "the existing on-site wash";
+  return (
+    " This is an ACQUISITION: ModWash would BUY " +
+    asset +
+    ". Critically, that on-site wash is the ASSET being purchased, NOT a competitor — it has " +
+    "already been removed from the competition count, so do not treat it as competition or " +
+    "as market saturation. Greenfield 'white space' logic does not apply. Instead assess " +
+    "whether buying this operating wash is sound: its competitive position versus the OTHER " +
+    "washes in the trade area, the market's ability to support and grow it (demographics, " +
+    "income, daytime population, growth), cannibalization with existing ModWash stores, and " +
+    "how it compares to the analog stores. Note that physical attributes (visibility, " +
+    "ingress/egress, layout, equipment) and real sales history would be knowable on diligence " +
+    "and are the decisive inputs."
+  );
+}
 
 export async function generateReasoning(input: ReasoningInput): Promise<Reasoning | null> {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -104,7 +129,9 @@ export async function generateReasoning(input: ReasoningInput): Promise<Reasonin
       body: JSON.stringify({
         model,
         max_tokens: 1500,
-        system: SYSTEM,
+        system:
+          SYSTEM_BASE +
+          (input.dealType === "acquisition" ? acquisitionNote(input.target) : BUILD_NOTE),
         tools: [TOOL],
         tool_choice: { type: "tool", name: "site_assessment" },
         messages: [

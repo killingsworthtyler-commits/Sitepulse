@@ -8,7 +8,9 @@ import {
   detectCompetition,
   detectCompetitionPlaces,
   detectTrafficDriverPlaces,
+  findCompetitors,
 } from "./places";
+import { type DealType, ONSITE_M, metersBetween } from "@/lib/deal";
 
 /** One auto-filled scorecard field + provenance. */
 export interface AutofillField {
@@ -34,6 +36,7 @@ export interface AutofillResult {
 export async function autofillSite(
   address: string,
   minutes?: number,
+  dealType: DealType = "build",
 ): Promise<AutofillResult> {
   const geo = await geocodeRobust(address);
   if (!geo) {
@@ -80,23 +83,42 @@ export async function autofillSite(
     : null;
   const mock = detectCompetition(address);
 
+  // Acquisition: the wash on the address is the asset being bought, not a
+  // competitor. Use the coordinate-aware list to find + exclude it from the count.
+  let onSiteName: string | null = null;
+  let onSiteCount = 0;
+  if (dealType === "acquisition" && gKey) {
+    const comps = await findCompetitors(geo.lat, geo.lng, 4828, gKey);
+    const onSite = comps.filter((c) => metersBetween(geo.lat, geo.lng, c.lat, c.lng) <= ONSITE_M);
+    onSiteCount = onSite.length;
+    onSiteName = onSite[0]?.name ?? null;
+  }
+
   if (livePlaces) {
+    const adjCount = Math.max(0, livePlaces.count - onSiteCount);
+    const acqNote =
+      dealType === "acquisition"
+        ? onSiteCount > 0
+          ? ` Excludes the on-site wash being acquired${onSiteName ? ` (${onSiteName})` : ""}.`
+          : " Acquisition mode: no on-site wash detected at the address."
+        : "";
     fields.competition = {
-      value: livePlaces.count,
-      source: `Google Places — ${livePlaces.count} car wash${livePlaces.count === 1 ? "" : "es"} within 3 mi`,
+      value: adjCount,
+      source: `Google Places — ${adjCount} car wash${adjCount === 1 ? "" : "es"} within 3 mi`,
       confidence: "data",
-      note: livePlaces.names.length
-        ? `Counts every standalone wash nearby: ${livePlaces.names.join(", ")}. Trim to your direct express competitors if some aren't a true competitive set.`
-        : undefined,
+      note:
+        (livePlaces.names.length
+          ? `Counts every standalone wash nearby: ${livePlaces.names.join(", ")}. Trim to your direct express competitors if some aren't a true competitive set.`
+          : "") + acqNote || undefined,
     };
     fields.qualityOfCompetition = {
       value: livePlaces.quality,
       source: "Google Places — competitor brands",
       confidence: "data",
     };
-    if (livePlaces.count > 4) {
+    if (adjCount > 4) {
       warnings.push(
-        `Competition auto-counted ${livePlaces.count} washes within 3 mi (${livePlaces.names.join(", ")}). In dense markets this over-counts vs. a direct express set — review and adjust the Competition field.`,
+        `Competition auto-counted ${adjCount} washes within 3 mi (${livePlaces.names.join(", ")}). In dense markets this over-counts vs. a direct express set — review and adjust the Competition field.`,
       );
     }
   } else {

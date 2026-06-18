@@ -71,6 +71,7 @@ export function ScorecardTool({
   const [name, setName] = useState(initial?.name ?? "");
   const [matched, setMatched] = useState(initial?.address ?? "");
   const [driveMin, setDriveMin] = useState(7);
+  const [dealType, setDealType] = useState<"build" | "acquisition">("build");
   const [loading, setLoading] = useState(false);
   const [autofilled, setAutofilled] = useState<AutoMap>({});
   const [banner, setBanner] = useState<
@@ -101,7 +102,7 @@ export function ScorecardTool({
     setLoading(true);
     setBanner(null);
     try {
-      const res = await autofillAction(address, driveMin);
+      const res = await autofillAction(address, driveMin, dealType);
       if (!res.ok) {
         setBanner({ warnings: [], error: res.error });
         return;
@@ -162,6 +163,32 @@ export function ScorecardTool({
             >
               {loading ? "Filling…" : "Auto-fill"}
             </button>
+          </div>
+
+          {/* Evaluation type — acquisition excludes the on-site wash from competition */}
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[11px] font-medium text-slate-500">Evaluation:</span>
+            <div className="inline-flex overflow-hidden rounded-md border border-slate-200">
+              {(["build", "acquisition"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDealType(d)}
+                  className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                    dealType === d
+                      ? "bg-brand-blue text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {d === "build" ? "New build" : "Acquisition"}
+                </button>
+              ))}
+            </div>
+            <span className="text-[11px] text-slate-400">
+              {dealType === "acquisition"
+                ? "excludes the wash already on the site"
+                : "greenfield — entering the market"}
+            </span>
           </div>
 
           {/* Trade area — drive-time minutes used for demographics + competition */}
@@ -319,7 +346,7 @@ export function ScorecardTool({
 
         {(matched || address.trim()) && (
           <Link
-            href={`/report?address=${encodeURIComponent(matched || address.trim())}`}
+            href={`/report?address=${encodeURIComponent(matched || address.trim())}${dealType === "acquisition" ? "&deal=acquisition" : ""}`}
             className="block text-center text-xs font-semibold text-brand-blue hover:underline"
           >
             Open shareable site report →

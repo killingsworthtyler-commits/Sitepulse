@@ -26,9 +26,10 @@ function distM(aLat: number, aLng: number, bLat: number, bLng: number): number {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ address?: string; name?: string }>;
+  searchParams: Promise<{ address?: string; name?: string; deal?: string }>;
 }) {
-  const { address, name } = await searchParams;
+  const { address, name, deal } = await searchParams;
+  const dealType = deal === "acquisition" ? "acquisition" : "build";
 
   if (!address) {
     return (
@@ -47,7 +48,7 @@ export default async function ReportPage({
     );
   }
 
-  const report = await buildSiteReport(address);
+  const report = await buildSiteReport(address, dealType);
 
   if (!report.ok) {
     return (
@@ -122,6 +123,60 @@ export default async function ReportPage({
           <ShareButton subject={`ModWash Site Report — ${title}`} />
         </div>
       </div>
+
+      {/* Deal type: build (greenfield) vs acquisition (buying the on-site wash) */}
+      {(() => {
+        const base = `/report?address=${encodeURIComponent(address)}${name ? `&name=${encodeURIComponent(name)}` : ""}`;
+        const tab = (label: string, value: "build" | "acquisition", sub: string) => {
+          const active = dealType === value;
+          return (
+            <Link
+              href={`${base}&deal=${value}`}
+              className={`flex-1 rounded-md border px-4 py-2 text-center transition-colors ${
+                active
+                  ? "border-brand-blue bg-brand-blue/5 ring-1 ring-brand-blue"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <span className={`block text-sm font-semibold ${active ? "text-brand-blue" : "text-slate-700"}`}>
+                {label}
+              </span>
+              <span className="block text-[11px] text-slate-500">{sub}</span>
+            </Link>
+          );
+        };
+        return (
+          <div className="no-print mb-4">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Evaluation type
+            </p>
+            <div className="flex gap-2">
+              {tab("New build", "build", "Greenfield — entering the market")}
+              {tab("Acquisition", "acquisition", "Buying the existing on-site wash")}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Acquisition banner: which asset we're buying + that it's excluded */}
+      {dealType === "acquisition" && (
+        <div className="mb-4 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-4 py-3 text-sm">
+          {report.target ? (
+            <p className="text-slate-700">
+              <span className="font-semibold text-brand-blue">Acquisition</span> — evaluating
+              the purchase of <span className="font-semibold">{report.target.name}</span> (
+              {report.target.type.toLowerCase()}) on this site. It&apos;s the asset being
+              bought, so it&apos;s excluded from the competition count and score below.
+            </p>
+          ) : (
+            <p className="text-slate-700">
+              <span className="font-semibold text-brand-blue">Acquisition</span> mode — no
+              existing wash was detected right at this address, so the score is the same as a
+              new build. Double-check the address if you expected an on-site wash.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Score banner */}
       <div className="mb-6 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-5 ring-1 ring-slate-900/[0.02]">
