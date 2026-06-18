@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { scoreSite, type Grade } from "@/lib/scorecard/modwash";
 import {
-  loadScorecards,
-  upsertScorecard,
-  deleteScorecard,
-  newScorecardId,
-  type SavedScorecard,
-} from "@/lib/scorecard/store";
+  listScorecardsAction,
+  saveScorecardAction,
+  deleteScorecardAction,
+} from "@/app/scorecard/db-actions";
+import { newScorecardId, type SavedScorecard } from "@/lib/scorecard/saved";
 import { ScorecardTool, type ScorecardDraft } from "@/components/scorecard-tool";
 import { GradeBadge } from "@/components/badges";
 
@@ -29,16 +28,26 @@ function fmtDate(iso: string): string {
 export function ScorecardWorkbench() {
   const [list, setList] = useState<SavedScorecard[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [configured, setConfigured] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<"list" | "edit">("list");
   const [draft, setDraft] = useState<ScorecardDraft | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [grade, setGrade] = useState<Grade | "all">("all");
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setList(loadScorecards());
+  const refresh = useCallback(async () => {
+    const res = await listScorecardsAction();
+    setConfigured(res.configured);
+    setDbError(res.error ?? null);
+    setList(res.scorecards);
     setLoaded(true);
   }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const scored = useMemo(
     () => list.map((s) => ({ ...s, result: scoreSite(s.inputs, s.variant) })),
@@ -70,7 +79,7 @@ export function ScorecardWorkbench() {
     setMode("edit");
   }
 
-  function handleSave(d: ScorecardDraft) {
+  async function handleSave(d: ScorecardDraft) {
     const now = new Date().toISOString();
     const existing = d.id ? list.find((s) => s.id === d.id) : undefined;
     const sc: SavedScorecard = {
@@ -82,13 +91,26 @@ export function ScorecardWorkbench() {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    setList(upsertScorecard(sc));
+    setSaving(true);
+    const res = await saveScorecardAction(sc);
+    setSaving(false);
+    if (!res.ok) {
+      setDbError(res.error ?? "Couldn't save the scorecard.");
+      return;
+    }
+    setDbError(null);
+    await refresh();
     setMode("list");
   }
 
-  function handleDelete(id: string) {
-    setList(deleteScorecard(id));
+  async function handleDelete(id: string) {
+    const res = await deleteScorecardAction(id);
     setConfirmId(null);
+    if (!res.ok) {
+      setDbError(res.error ?? "Couldn't delete the scorecard.");
+      return;
+    }
+    await refresh();
   }
 
   // ---------------- Editor ----------------
@@ -101,8 +123,13 @@ export function ScorecardWorkbench() {
         >
           ← Back to scorecards
         </button>
-        <h2 className="font-display mb-4 text-xl font-bold uppercase tracking-wide text-ink">
+        <h2 className="font-display mb-4 flex items-center gap-3 text-xl font-bold uppercase tracking-wide text-ink">
           {draft?.id ? "Edit Scorecard" : "New Scorecard"}
+          {saving && (
+            <span className="text-xs font-medium normal-case tracking-normal text-slate-400">
+              Saving…
+            </span>
+          )}
         </h2>
         <ScorecardTool
           initial={draft}
@@ -134,6 +161,19 @@ export function ScorecardWorkbench() {
         </button>
       </div>
 
+      {loaded && !configured && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Database not connected.</span> Set{" "}
+          <code className="rounded bg-amber-100 px-1">DATABASE_URL</code> to save
+          scorecards. Saving won&apos;t work until it&apos;s configured.
+        </div>
+      )}
+      {dbError && (
+        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {dbError}
+        </div>
+      )}
+
       {list.length > 0 && (
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
@@ -155,8 +195,12 @@ export function ScorecardWorkbench() {
         </div>
       )}
 
+      {!loaded && (
+        <p className="py-10 text-center text-sm text-slate-400">Loading scorecards…</p>
+      )}
+
       {/* Empty states */}
-      {loaded && list.length === 0 && (
+      {loaded && configured && list.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center">
           <p className="font-display text-lg font-bold uppercase tracking-wide text-slate-700">
             No scorecards yet

@@ -27,12 +27,15 @@ Two variants: **Northern** (includes Snow Days, 72 pts possible) vs **Southern**
 The model is **declarative** — the same structure powers `scoreSite()` and renders
 the input form (`components/scorecard-tool.tsx`). Keep them unified.
 
-## Saved scorecards (`lib/scorecard/store.ts`)
+## Saved scorecards (`lib/db/scorecards.ts`)
 Users score sites in `/scorecard` (the workbench) and save them. Scorecards
-persist in the browser via `localStorage` (key `sitepulse.scorecards.v1`) — pure
-list-in/list-out functions so a future Supabase/Postgres swap only touches this
-file. Only inputs + variant are stored; the grade is recomputed by the engine, so
-it can never drift. The list supports search + grade filtering, edit, and delete.
+persist in **Neon serverless Postgres** (`DATABASE_URL`), so they're shared
+across devices and users. The `scorecards` table is created on first use. The
+client never touches the DB — it calls the server actions in
+`app/scorecard/db-actions.ts`. Only inputs + variant are stored; the grade is
+recomputed by the engine, so it can never drift. The list supports search +
+grade filtering, edit, and delete. Without `DATABASE_URL` the workbench shows a
+"database not connected" notice.
 
 > The engine was reverse-engineered to reproduce Hutton's spreadsheets exactly
 > (West Palm 100% A, Inman 91% A, Carlisle 81% B, Jacksonville 55% C, Rocky Mount
