@@ -11,6 +11,8 @@ import {
 } from "@/lib/autofill/places";
 import { popRingRadiusMeters } from "@/lib/autofill/tradearea";
 import { findCannibalization, type CannibalStore } from "@/lib/report/cannibalization";
+import { analogVariables, type AnalogVars } from "@/lib/analogs/variables";
+import { matchAnalogs, type AnalogMatch } from "@/lib/analogs/match";
 import { gatherSiteMetrics, type SiteMetrics } from "@/lib/prospect/metrics";
 import { desktopScore } from "@/lib/prospect/score";
 import { fetchDemographicsReport, type DemographicsReport } from "@/lib/demographics/report";
@@ -34,6 +36,10 @@ export interface SiteReport {
   ringRadiusM?: number;
   /** Existing ModWash stores whose ring overlaps the candidate's. */
   cannibalization?: CannibalStore[];
+  /** The candidate's 3-mile analog footprint (for the comparison table). */
+  analogVars?: AnalogVars;
+  /** Closest operational stores by demographic footprint. */
+  analogs?: AnalogMatch[];
   demographics?: DemographicsReport;
 }
 
@@ -44,16 +50,18 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
   }
 
   const gKey = process.env.GOOGLE_MAPS_API_KEY;
-  const [metrics, competitors, washes, demographics, ringRadiusM] = await Promise.all([
+  const [metrics, competitors, washes, demographics, ringRadiusM, analogVars] = await Promise.all([
     gatherSiteMetrics(loc.lat, loc.lng),
     gKey ? findCompetitors(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
     gKey ? findCarWashesTyped(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
     fetchDemographicsReport(address),
     popRingRadiusMeters(loc.lat, loc.lng),
+    analogVariables(loc.lat, loc.lng),
   ]);
 
   const score = desktopScore(metrics);
   const cannibalization = findCannibalization(loc.lat, loc.lng, ringRadiusM);
+  const analogs = analogVars ? matchAnalogs(analogVars) : [];
 
   return {
     ok: true,
@@ -67,6 +75,8 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
     washes,
     ringRadiusM,
     cannibalization,
+    analogVars: analogVars ?? undefined,
+    analogs,
     demographics,
   };
 }
