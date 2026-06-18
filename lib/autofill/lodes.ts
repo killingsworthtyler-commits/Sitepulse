@@ -54,15 +54,19 @@ async function loadStateJobs(
   }
 }
 
-/** Total jobs located within the ring (sum over its block groups). */
+/** Total jobs in the trade area, apportioned by each block group's weight
+    (geoid → fraction). A plain string[] is treated as full weight. */
 export async function getRingJobs(
   stateFips: string,
-  bgGeoids: string[],
+  bgs: string[] | Record<string, number>,
   year = 2021,
 ): Promise<number | null> {
   const map = await loadStateJobs(stateFips, year);
   if (!map) return null;
+  const weights: Record<string, number> = Array.isArray(bgs)
+    ? Object.fromEntries(bgs.map((g) => [g, 1]))
+    : bgs;
   let total = 0;
-  for (const g of bgGeoids) total += map.get(g) ?? 0;
-  return total;
+  for (const [g, w] of Object.entries(weights)) total += (map.get(g) ?? 0) * w;
+  return Math.round(total);
 }

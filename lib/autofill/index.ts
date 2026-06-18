@@ -126,10 +126,9 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
   // Demographics — ACS over the trade area (drive-time when keyed, else ring)
   const key = process.env.CENSUS_API_KEY;
   const ta = await getTradeArea(geo.lat, geo.lng);
-  const geoids = ta.geoids;
   const taLabel =
     ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
-  const demo = await ringDemographics(geo.state, geo.county, geoids, key);
+  const demo = await ringDemographics(geo.state, geo.county, ta.weights, key);
 
   const ringNote =
     ta.mode === "drivetime"
@@ -153,7 +152,7 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
     }
 
     // Daytime population = residents + jobs in area − employed residents.
-    const jobs = await getRingJobs(geo.state, geoids);
+    const jobs = await getRingJobs(geo.state, ta.weights);
     if (jobs != null && demo.employedResidents > 0) {
       fields.daytimePop = {
         value: Math.max(

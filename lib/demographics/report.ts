@@ -36,13 +36,13 @@ export interface DemographicsReport {
 
 type Row = Record<string, number>;
 
-/** Fetch ACS variables for every block group in a county, keep the ring, return
-    one numeric record per ring block group. */
+/** Fetch ACS variables for every block group in a county, keep the trade-area
+    block groups, and tag each row with its apportionment weight (`__w`). */
 async function acsRing(
   state: string,
   county: string,
   vars: string[],
-  ring: Set<string>,
+  weights: Record<string, number>,
   key: string,
 ): Promise<Row[]> {
   const url =
@@ -62,8 +62,9 @@ async function acsRing(
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
       const geoid = `${r[iSt]}${r[iCo]}${r[iTr]}${r[iBg]}`;
-      if (!ring.has(geoid)) continue;
-      const rec: Row = {};
+      const w = weights[geoid];
+      if (!w) continue;
+      const rec: Row = { __w: w };
       vars.forEach((v, k) => (rec[v] = Number(r[vi[k]]) || 0));
       out.push(rec);
     }
@@ -73,15 +74,18 @@ async function acsRing(
   }
 }
 
-const sum = (rows: Row[], v: string) => rows.reduce((a, r) => a + (r[v] || 0), 0);
+/** Apportioned sum: each block group's value times its area-fraction weight. */
+const sum = (rows: Row[], v: string) =>
+  rows.reduce((a, r) => a + (r[v] || 0) * (r.__w ?? 1), 0);
 
-/** Population/household-weighted average of a per-BG figure (e.g. median income). */
+/** Weighted average of a per-BG figure (e.g. median income), where the base
+    weight is also scaled by the apportionment fraction. */
 function weightedAvg(rows: Row[], valueVar: string, weightVar: string): number {
   let num = 0;
   let den = 0;
   for (const r of rows) {
     const v = r[valueVar];
-    const w = r[weightVar];
+    const w = (r[weightVar] || 0) * (r.__w ?? 1);
     if (v > 0 && w > 0) {
       num += v * w;
       den += w;
@@ -170,11 +174,11 @@ export async function fetchDemographicsReport(
   const fips = { state: loc.state, county: loc.county };
 
   const ta = await getTradeArea(loc.lat, loc.lng, minutes ? { minutes } : {});
-  const geoids = ta.geoids;
+  const weights = ta.weights;
+  const geoids = Object.keys(weights);
   if (geoids.length === 0) {
     return { ok: false, error: "No Census block groups found near that address." };
   }
-  const ring = new Set(geoids);
   const tradeAreaLabel =
     ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
 
@@ -194,10 +198,10 @@ export async function fetchDemographicsReport(
   const eduVars = ["B15003_001E", ...EDU_BRACKETS.flatMap((b) => b.codes.map(eduVar))];
 
   const [summary, age, edu, jobs, growth] = await Promise.all([
-    acsRing(fips.state, fips.county, summaryVars, ring, key),
-    acsRing(fips.state, fips.county, ageVars, ring, key),
-    acsRing(fips.state, fips.county, eduVars, ring, key),
-    getRingJobs(fips.state, geoids),
+    acsRing(fips.state, fips.county, summaryVars, weights, key),
+    acsRing(fips.state, fips.county, ageVars, weights, key),
+    acsRing(fips.state, fips.county, eduVars, weights, key),
+    getRingJobs(fips.state, weights),
     countyGrowth(fips.state, fips.county, key),
   ]);
 

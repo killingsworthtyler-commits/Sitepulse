@@ -41,10 +41,10 @@ export async function gatherSiteMetrics(
 
   // Kick off the independent lookups together.
   const fips = await geocodeCoords(lat, lng);
-  const geoids = fips ? (await getTradeArea(lat, lng)).geoids : [];
+  const weights = fips ? (await getTradeArea(lat, lng)).weights : {};
 
   const [demo, growth, aadt, comp, driver] = await Promise.all([
-    fips ? ringDemographics(fips.state, fips.county, geoids, censusKey) : null,
+    fips ? ringDemographics(fips.state, fips.county, weights, censusKey) : null,
     fips ? countyGrowth(fips.state, fips.county, censusKey) : null,
     nearestAadt(lat, lng),
     gKey ? detectCompetitionPlaces(lat, lng, gKey) : null,
@@ -52,7 +52,7 @@ export async function gatherSiteMetrics(
   ]);
 
   const jobs =
-    demo && fips ? await getRingJobs(fips.state, geoids) : null;
+    demo && fips ? await getRingJobs(fips.state, weights) : null;
 
   let dataPoints = 0;
   if (demo) dataPoints++;

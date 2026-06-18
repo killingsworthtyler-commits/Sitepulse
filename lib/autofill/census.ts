@@ -67,19 +67,51 @@ async function geocodeOSM(
   }
 }
 
-/** Geocode robustly: Census first (precise + FIPS), then OSM + reverse-FIPS for
-    addresses Census can't match. Returns the full GeoResult or null. */
+/** Google Places text search — precise geocoding for addresses Census can't
+    match (e.g. highway addresses). Uses the Places key we already have. */
+async function geocodeGoogle(
+  address: string,
+): Promise<{ lat: number; lng: number; matched: string } | null> {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "places.location,places.formattedAddress",
+      },
+      body: JSON.stringify({ textQuery: address, maxResultCount: 1 }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const p = data?.places?.[0];
+    if (!p?.location) return null;
+    return {
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+      matched: p.formattedAddress ?? address,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Geocode robustly: Census first (precise + FIPS), then Google (precise), then
+    OSM — with reverse-FIPS for the latter two. Returns the GeoResult or null. */
 export async function geocodeRobust(address: string): Promise<GeoResult | null> {
   const c = await geocode(address);
   if (c && c.state && c.county) return c;
-  const osm = await geocodeOSM(address);
-  if (!osm) return null;
-  const fips = await geocodeCoords(osm.lat, osm.lng);
+
+  const alt = (await geocodeGoogle(address)) ?? (await geocodeOSM(address));
+  if (!alt) return null;
+  const fips = await geocodeCoords(alt.lat, alt.lng);
   if (!fips) return null;
   return {
-    matchedAddress: osm.matched,
-    lat: osm.lat,
-    lng: osm.lng,
+    matchedAddress: alt.matched,
+    lat: alt.lat,
+    lng: alt.lng,
     state: fips.state,
     county: fips.county,
   };
@@ -144,17 +176,21 @@ export interface RingDemographics {
 }
 
 /**
- * Aggregate ACS 5-year demographics over a set of block-group GEOIDs (the ring):
- * sum population & employed residents, household-weight median income. Needs key.
+ * Aggregate ACS 5-year demographics over the trade-area block groups,
+ * apportioned by each block group's weight (geoid → area fraction). A plain
+ * string[] is treated as full weight. Needs key.
  */
 export async function ringDemographics(
   state: string,
   county: string,
-  geoids: string[],
+  bgs: string[] | Record<string, number>,
   key: string | undefined,
   year = 2023,
 ): Promise<RingDemographics | null> {
-  if (!key || geoids.length === 0) return null;
+  const weights: Record<string, number> = Array.isArray(bgs)
+    ? Object.fromEntries(bgs.map((g) => [g, 1]))
+    : bgs;
+  if (!key || Object.keys(weights).length === 0) return null;
 
   const url =
     `https://api.census.gov/data/${year}/acs/acs5` +
@@ -175,7 +211,6 @@ export async function ringDemographics(
     const iTract = header.indexOf("tract");
     const iBg = header.indexOf("block group");
 
-    const want = new Set(geoids);
     let population = 0;
     let employedResidents = 0;
     let incWeighted = 0;
@@ -185,25 +220,26 @@ export async function ringDemographics(
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
       const geoid = `${r[iState]}${r[iCounty]}${r[iTract]}${r[iBg]}`;
-      if (!want.has(geoid)) continue;
+      const w = weights[geoid];
+      if (!w) continue;
       bgCount++;
       const pop = Number(r[iPop]);
       const inc = Number(r[iInc]);
       const hh = Number(r[iHH]);
       const emp = Number(r[iEmp]);
-      if (pop > 0) population += pop;
-      if (emp > 0) employedResidents += emp;
+      if (pop > 0) population += pop * w;
+      if (emp > 0) employedResidents += emp * w;
       if (inc > 0 && hh > 0) {
-        incWeighted += inc * hh;
-        households += hh;
+        incWeighted += inc * hh * w;
+        households += hh * w;
       }
     }
 
     if (population === 0) return null;
     return {
-      population,
+      population: Math.round(population),
       medianIncome: households > 0 ? Math.round(incWeighted / households) : 0,
-      employedResidents,
+      employedResidents: Math.round(employedResidents),
       bgCount,
     };
   } catch {

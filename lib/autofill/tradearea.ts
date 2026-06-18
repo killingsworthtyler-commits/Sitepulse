@@ -1,35 +1,35 @@
-// Trade area = the geography we aggregate demographics over. Two modes:
+// Trade area = the geography we aggregate demographics over. We return per
+// block-group WEIGHTS (the fraction of each block group inside the area) so the
+// demographic aggregation is apportioned, not all-or-nothing.
+//
 //  - DRIVE-TIME (accurate): an OpenRouteService isochrone (e.g. 7-min drive),
-//    then the Census block groups whose CENTROID falls inside that polygon.
-//    This matches how Experian/Placer define a custom trade area.
-//  - RING (fallback): block groups whose centroid is within N miles — already
-//    more accurate than counting every block group that *touches* a circle.
-// Either way we return the block-group GEOIDs (+ centroids) so the demographic
-// aggregation downstream is unchanged.
+//    then each Census block group weighted by the share of its area inside the
+//    drive polygon. This is how Experian/Placer build a custom trade area.
+//  - RING (fallback, no ORS key): the same apportionment against a circle.
+//
+// Area share is estimated by point-sampling each block group — robust for the
+// non-convex isochrone polygons and large rural block groups (where a centroid
+// test would wrongly drop or keep a whole block group).
 
 const TIGER_BG =
   "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/10/query";
 const ORS_ISO = "https://api.openrouteservice.org/v2/isochrones/driving-car";
 
-export interface BGCentroid {
-  geoid: string;
-  lat: number;
-  lng: number;
-}
-
 export interface TradeArea {
-  geoids: string[];
-  centroids: BGCentroid[];
+  /** geoid → fraction (0–1] of that block group inside the trade area. */
+  weights: Record<string, number>;
   areaSqMi: number;
   mode: "drivetime" | "ring";
-  /** Drive minutes (drivetime mode). */
   minutes?: number;
-  /** Radius miles (ring mode). */
   radiusMi?: number;
 }
 
+export const DEFAULT_DRIVE_MINUTES = 7;
+const FALLBACK_RADIUS_MI = 3;
+const SAMPLES = 700; // points sampled per block group for the area fraction
+
 // ---------------------------------------------------------------------------
-// Geometry helpers
+// Geometry
 // ---------------------------------------------------------------------------
 
 /** Ray-casting point-in-polygon. ring is [[lng,lat], …], pt is [lng,lat]. */
@@ -52,14 +52,47 @@ function pointInPolygon(pt: [number, number], ring: number[][]): boolean {
 function ringAreaSqMi(ring: number[][]): number {
   if (ring.length < 3) return 0;
   const latC = ring.reduce((a, p) => a + p[1], 0) / ring.length;
-  const miPerDegLat = 69.17;
-  const miPerDegLng = 69.17 * Math.cos((latC * Math.PI) / 180);
-  let area = 0; // shoelace in degrees
+  const miLat = 69.17;
+  const miLng = 69.17 * Math.cos((latC * Math.PI) / 180);
+  let area = 0;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
   }
-  area = Math.abs(area) / 2;
-  return area * miPerDegLat * miPerDegLng;
+  return (Math.abs(area) / 2) * miLat * miLng;
+}
+
+/** A circle (as a polygon ring [[lng,lat], …]) of `radiusMi` around a point. */
+function circlePolygon(lat: number, lng: number, radiusMi: number, n = 48): number[][] {
+  const dLat = radiusMi / 69.17;
+  const dLng = radiusMi / (69.17 * Math.cos((lat * Math.PI) / 180));
+  const ring: number[][] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (2 * Math.PI * i) / n;
+    ring.push([lng + dLng * Math.cos(a), lat + dLat * Math.sin(a)]);
+  }
+  return ring;
+}
+
+/** Fraction of a block group's area inside the trade-area polygon (0–1). */
+function areaFraction(bgOuter: number[][], polygon: number[][]): number {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of bgOuter) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  let inBG = 0;
+  let inBoth = 0;
+  for (let i = 0; i < SAMPLES; i++) {
+    const x = minX + Math.random() * (maxX - minX);
+    const y = minY + Math.random() * (maxY - minY);
+    if (pointInPolygon([x, y], bgOuter)) {
+      inBG++;
+      if (pointInPolygon([x, y], polygon)) inBoth++;
+    }
+  }
+  return inBG > 0 ? inBoth / inBG : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,31 +126,22 @@ async function getIsochrone(
   }
 }
 
-interface TigerFeature {
-  attributes?: { GEOID?: string; CENTLAT?: string; CENTLON?: string };
+interface BGGeom {
+  geoid: string;
+  outer: number[][];
 }
 
-function parseBGs(features: TigerFeature[]): BGCentroid[] {
-  return features
-    .map((f) => {
-      const a = f.attributes ?? {};
-      const lat = Number(a.CENTLAT);
-      const lng = Number(a.CENTLON);
-      if (!a.GEOID || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-      return { geoid: a.GEOID, lat, lng };
-    })
-    .filter(Boolean) as BGCentroid[];
-}
-
-/** Block groups whose centroid is inside the isochrone polygon. */
-async function bgsInPolygon(ring: number[][]): Promise<BGCentroid[]> {
+/** Block groups intersecting the polygon, with their (generalized) geometry. */
+async function fetchBGGeometries(polygon: number[][]): Promise<BGGeom[]> {
   const params = new URLSearchParams({
-    geometry: JSON.stringify({ rings: [ring], spatialReference: { wkid: 4326 } }),
+    geometry: JSON.stringify({ rings: [polygon], spatialReference: { wkid: 4326 } }),
     geometryType: "esriGeometryPolygon",
     inSR: "4326",
+    outSR: "4326",
     spatialRel: "esriSpatialRelIntersects",
-    outFields: "GEOID,CENTLAT,CENTLON",
-    returnGeometry: "false",
+    outFields: "GEOID",
+    returnGeometry: "true",
+    geometryPrecision: "5",
     f: "json",
   });
   try {
@@ -128,57 +152,34 @@ async function bgsInPolygon(ring: number[][]): Promise<BGCentroid[]> {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    const all = parseBGs(data.features ?? []);
-    // Apportion: keep block groups whose centroid is inside the drive-time area.
-    return all.filter((bg) => pointInPolygon([bg.lng, bg.lat], ring));
+    return (data.features ?? [])
+      .map((f: { attributes?: { GEOID?: string }; geometry?: { rings?: number[][][] } }) => {
+        const geoid = f.attributes?.GEOID;
+        const outer = f.geometry?.rings?.[0];
+        if (!geoid || !outer || outer.length < 3) return null;
+        return { geoid, outer };
+      })
+      .filter(Boolean) as BGGeom[];
   } catch {
     return [];
   }
 }
 
-/** Block groups whose centroid is within `meters` of the point. */
-async function bgsInRadius(lat: number, lng: number, meters: number): Promise<BGCentroid[]> {
-  const params = new URLSearchParams({
-    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
-    geometryType: "esriGeometryPoint",
-    inSR: "4326",
-    distance: String(meters),
-    units: "esriSRUnit_Meter",
-    spatialRel: "esriSpatialRelIntersects",
-    outFields: "GEOID,CENTLAT,CENTLON",
-    returnGeometry: "false",
-    f: "json",
-  });
-  try {
-    const res = await fetch(`${TIGER_BG}?${params.toString()}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    const all = parseBGs(data.features ?? []);
-    const R = 6371000;
-    return all.filter((bg) => {
-      const dLat = ((bg.lat - lat) * Math.PI) / 180;
-      const dLng = ((bg.lng - lng) * Math.PI) / 180;
-      const s =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos((lat * Math.PI) / 180) *
-          Math.cos((bg.lat * Math.PI) / 180) *
-          Math.sin(dLng / 2) ** 2;
-      return 2 * R * Math.asin(Math.sqrt(s)) <= meters;
-    });
-  } catch {
-    return [];
+/** geoid → area fraction inside the polygon (keeps fractions above ~2%). */
+async function bgWeights(polygon: number[][]): Promise<Record<string, number>> {
+  const bgs = await fetchBGGeometries(polygon);
+  const weights: Record<string, number> = {};
+  for (const bg of bgs) {
+    const f = areaFraction(bg.outer, polygon);
+    if (f > 0.02) weights[bg.geoid] = Math.min(1, f);
   }
+  return weights;
 }
 
 // ---------------------------------------------------------------------------
 // Public
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_DRIVE_MINUTES = 7;
-const FALLBACK_RADIUS_MI = 3;
-
-/** Resolve the trade area for a point: drive-time if an ORS key is set and the
-    isochrone succeeds, else a centroid radius ring. */
 export async function getTradeArea(
   lat: number,
   lng: number,
@@ -190,26 +191,15 @@ export async function getTradeArea(
   if (key) {
     const ring = await getIsochrone(lat, lng, minutes, key);
     if (ring) {
-      const centroids = await bgsInPolygon(ring);
-      if (centroids.length > 0) {
-        return {
-          geoids: centroids.map((c) => c.geoid),
-          centroids,
-          areaSqMi: ringAreaSqMi(ring),
-          mode: "drivetime",
-          minutes,
-        };
+      const weights = await bgWeights(ring);
+      if (Object.keys(weights).length > 0) {
+        return { weights, areaSqMi: ringAreaSqMi(ring), mode: "drivetime", minutes };
       }
     }
   }
 
   const radiusMi = opts.radiusMi ?? FALLBACK_RADIUS_MI;
-  const centroids = await bgsInRadius(lat, lng, radiusMi * 1609.34);
-  return {
-    geoids: centroids.map((c) => c.geoid),
-    centroids,
-    areaSqMi: Math.PI * radiusMi * radiusMi,
-    mode: "ring",
-    radiusMi,
-  };
+  const circle = circlePolygon(lat, lng, radiusMi);
+  const weights = await bgWeights(circle);
+  return { weights, areaSqMi: Math.PI * radiusMi * radiusMi, mode: "ring", radiusMi };
 }
