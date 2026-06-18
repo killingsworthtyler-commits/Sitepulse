@@ -85,12 +85,20 @@ export async function autofillSite(
       value: livePlaces.count,
       source: `Google Places — ${livePlaces.count} car wash${livePlaces.count === 1 ? "" : "es"} within 3 mi`,
       confidence: "data",
+      note: livePlaces.names.length
+        ? `Counts every standalone wash nearby: ${livePlaces.names.join(", ")}. Trim to your direct express competitors if some aren't a true competitive set.`
+        : undefined,
     };
     fields.qualityOfCompetition = {
       value: livePlaces.quality,
       source: "Google Places — competitor brands",
       confidence: "data",
     };
+    if (livePlaces.count > 4) {
+      warnings.push(
+        `Competition auto-counted ${livePlaces.count} washes within 3 mi (${livePlaces.names.join(", ")}). In dense markets this over-counts vs. a direct express set — review and adjust the Competition field.`,
+      );
+    }
   } else {
     fields.competition = {
       value: mock.count,

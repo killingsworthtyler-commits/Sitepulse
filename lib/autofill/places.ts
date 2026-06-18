@@ -212,11 +212,14 @@ const NON_COMPETITOR_PRIMARY = new Set([
 // NOT "service" — Google tags *every* establishment with it, so it can't filter.
 const NON_COMPETITOR_TYPE = new Set(["gas_station", "convenience_store"]);
 const NON_COMPETITOR_NAME = [
-  // self-serve / coin / hand / detail / mobile — not express tunnels
+  // self-serve / coin / hand / detail / mobile / full-serve — not express tunnels
   "self serve", "self-serve", "self service", "self-service",
   "coin", "hand wash", "hand car wash", "detail", "mobile",
   "u-wash", "u wash", "do it yourself", "do-it-yourself",
   "spot free", "spot-free", "in bay", "in-bay",
+  "full service", "full-serve", "full serve",
+  // not actual washes (B2B / retail)
+  "consultants", "consulting", "supply", "equipment", "gift",
   // gas / convenience brands that still come back typed car_wash
   "circle k", "amoco", "exxon", "shell", "marathon", "speedway",
   "wawa", "sheetz", "racetrac", "quiktrip", "kwik trip", "murphy",
@@ -302,11 +305,11 @@ export async function detectCompetitionPlaces(
   lat: number,
   lng: number,
   key: string,
-): Promise<{ count: number; quality: string } | null> {
+): Promise<{ count: number; quality: string; names: string[] } | null> {
   const places = await searchNearby(lat, lng, 4828, ["car_wash"], key);
   if (places === null) return null;
   const names = places.filter(isCompetitor).map((p) => p.name).filter(Boolean);
-  return { count: names.length, quality: classifyCarWashQuality(names) };
+  return { count: names.length, quality: classifyCarWashQuality(names), names };
 }
 
 function gradeAnchor(p: PlaceLite): "A" | "B" | "C" | "D" {
