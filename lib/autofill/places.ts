@@ -211,20 +211,28 @@ const NON_COMPETITOR_PRIMARY = new Set([
 // Secondary types that flag a gas/convenience site even when primary = car_wash.
 // NOT "service" — Google tags *every* establishment with it, so it can't filter.
 const NON_COMPETITOR_TYPE = new Set(["gas_station", "convenience_store"]);
-const NON_COMPETITOR_NAME = [
-  // self-serve / coin / hand / detail / mobile / full-serve — not express tunnels
-  "self serve", "self-serve", "self service", "self-service",
-  "coin", "hand wash", "hand car wash", "detail", "mobile",
-  "u-wash", "u wash", "do it yourself", "do-it-yourself",
-  "spot free", "spot-free", "in bay", "in-bay",
-  "full service", "full-serve", "full serve",
-  "shammy", "buff n shine", "buff & shine", "buff and shine",
-  // not actual washes (B2B / retail / mis-tagged)
-  "consultants", "consulting", "supply", "equipment", "gift", "car seat",
-  // gas / convenience brands that still come back typed car_wash
+// Name groups behind the competition filter — also used to classify wash type.
+const GAS_BRANDS = [
   "circle k", "amoco", "exxon", "shell", "marathon", "speedway",
   "wawa", "sheetz", "racetrac", "quiktrip", "kwik trip", "murphy",
   "sunoco", "valero", "chevron", "7-eleven",
+];
+const SELF_SERVE_NAMES = [
+  "self serve", "self-serve", "self service", "self-service",
+  "coin", "u-wash", "u wash", "do it yourself", "do-it-yourself",
+  "spot free", "spot-free", "in bay", "in-bay",
+];
+const DETAIL_NAMES = [
+  "hand wash", "hand car wash", "detail", "mobile",
+  "full service", "full-serve", "full serve",
+  "shammy", "buff n shine", "buff & shine", "buff and shine",
+];
+const NON_WASH_NAMES = ["consultants", "consulting", "supply", "equipment", "gift", "car seat"];
+const NON_COMPETITOR_NAME = [
+  ...SELF_SERVE_NAMES,
+  ...DETAIL_NAMES,
+  ...NON_WASH_NAMES,
+  ...GAS_BRANDS,
 ];
 
 /** True if a "car_wash" result is a real express/automatic competitor (not a
@@ -242,6 +250,34 @@ function isCompetitor(p: PlaceLite): boolean {
   if (p.types.some((t) => NON_COMPETITOR_TYPE.has(t))) return false;
   if (NON_COMPETITOR_NAME.some((k) => n.includes(k))) return false;
   return true;
+}
+
+export type WashType =
+  | "Express / automatic"
+  | "Gas-station wash"
+  | "Self-serve / coin"
+  | "Detail / hand / mobile"
+  | "Unbranded / other"
+  | "Not a wash"
+  | "ModWash (own store)";
+
+/** Bucket a car-wash result by kind, so the report can show what's nearby. */
+function classifyWashType(p: PlaceLite): WashType {
+  const n = p.name.toLowerCase().trim();
+  if (OWN_BRANDS.some((b) => n.includes(b))) return "ModWash (own store)";
+  if (
+    p.primaryType === "gas_station" ||
+    p.primaryType === "convenience_store" ||
+    p.types.some((t) => NON_COMPETITOR_TYPE.has(t)) ||
+    GAS_BRANDS.some((b) => n.includes(b))
+  )
+    return "Gas-station wash";
+  if (NON_WASH_NAMES.some((k) => n.includes(k))) return "Not a wash";
+  if (SELF_SERVE_NAMES.some((k) => n.includes(k))) return "Self-serve / coin";
+  if (p.primaryType === "service" || DETAIL_NAMES.some((k) => n.includes(k)))
+    return "Detail / hand / mobile";
+  if (GENERIC_NAMES.has(n)) return "Unbranded / other";
+  return "Express / automatic";
 }
 
 export interface Competitor {
@@ -295,6 +331,62 @@ export async function findCompetitors(
         },
       )
       .filter(Boolean) as Competitor[];
+  } catch {
+    return [];
+  }
+}
+
+export interface TypedWash {
+  name: string;
+  lat: number;
+  lng: number;
+  type: WashType;
+}
+
+/** Every car wash within `radius` m, each labeled with its type (express,
+    gas-station, self-serve, detail, etc.) for the report breakdown. */
+export async function findCarWashesTyped(
+  lat: number,
+  lng: number,
+  radius: number,
+  key: string,
+): Promise<TypedWash[]> {
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask":
+          "places.displayName,places.location,places.primaryType,places.types",
+      },
+      body: JSON.stringify({
+        includedTypes: ["car_wash"],
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: { center: { latitude: lat, longitude: lng }, radius },
+        },
+      }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.places ?? [])
+      .map(
+        (p: {
+          displayName?: { text?: string };
+          location?: { latitude?: number; longitude?: number };
+          primaryType?: string;
+          types?: string[];
+        }): TypedWash | null => {
+          const name = p.displayName?.text ?? "";
+          const lt = p.location?.latitude;
+          const lg = p.location?.longitude;
+          if (!name || lt == null || lg == null) return null;
+          const lite: PlaceLite = { name, primaryType: p.primaryType, types: p.types ?? [] };
+          return { name, lat: lt, lng: lg, type: classifyWashType(lite) };
+        },
+      )
+      .filter(Boolean) as TypedWash[];
   } catch {
     return [];
   }

@@ -3,7 +3,12 @@
 // from the same data sources used elsewhere, so the report can't drift.
 
 import { geocodeRobust } from "@/lib/autofill/census";
-import { findCompetitors, type Competitor } from "@/lib/autofill/places";
+import {
+  findCompetitors,
+  findCarWashesTyped,
+  type Competitor,
+  type TypedWash,
+} from "@/lib/autofill/places";
 import { gatherSiteMetrics, type SiteMetrics } from "@/lib/prospect/metrics";
 import { desktopScore } from "@/lib/prospect/score";
 import { fetchDemographicsReport, type DemographicsReport } from "@/lib/demographics/report";
@@ -21,6 +26,8 @@ export interface SiteReport {
   score?: { percent: number; grade: Grade };
   metrics?: SiteMetrics;
   competitors?: Competitor[];
+  /** Every nearby car wash, labeled by type (for the breakdown). */
+  washes?: TypedWash[];
   demographics?: DemographicsReport;
 }
 
@@ -31,9 +38,10 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
   }
 
   const gKey = process.env.GOOGLE_MAPS_API_KEY;
-  const [metrics, competitors, demographics] = await Promise.all([
+  const [metrics, competitors, washes, demographics] = await Promise.all([
     gatherSiteMetrics(loc.lat, loc.lng),
     gKey ? findCompetitors(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
+    gKey ? findCarWashesTyped(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
     fetchDemographicsReport(address),
   ]);
 
@@ -48,6 +56,7 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
     score: { percent: score.percent, grade: score.grade },
     metrics,
     competitors,
+    washes,
     demographics,
   };
 }
