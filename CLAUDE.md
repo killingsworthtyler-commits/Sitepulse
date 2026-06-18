@@ -25,6 +25,7 @@ Node 20+ (CI/deploy pinned to 22 via `.node-version` / `render.yaml`).
 ## Environment variables (`.env.local`, git-ignored — never commit keys)
 - `CENSUS_API_KEY` — free key (api.census.gov/data/key_signup.html). Unlocks scorecard demographics auto-fill. Degrades gracefully if absent.
 - `GOOGLE_MAPS_API_KEY` — Places API (New). Unlocks real competition/traffic-driver. Currently mocked if absent.
+- `ANTHROPIC_API_KEY` — Claude (Anthropic API). Unlocks the "AI Analyst Read" narrative on the site report. Section is omitted if absent. Optional `ANTHROPIC_MODEL` overrides the model (default `claude-opus-4-8`).
 
 On Render these are set in the dashboard (the repo `render.yaml` declares them `sync:false`).
 

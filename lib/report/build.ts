@@ -13,12 +13,24 @@ import { popRingRadiusMeters } from "@/lib/autofill/tradearea";
 import { findCannibalization, type CannibalStore } from "@/lib/report/cannibalization";
 import { analogVariables, type AnalogVars } from "@/lib/analogs/variables";
 import { matchAnalogs, type AnalogMatch } from "@/lib/analogs/match";
+import { generateReasoning, type Reasoning } from "@/lib/ai/reasoning";
 import { gatherSiteMetrics, type SiteMetrics } from "@/lib/prospect/metrics";
 import { desktopScore } from "@/lib/prospect/score";
 import { fetchDemographicsReport, type DemographicsReport } from "@/lib/demographics/report";
 import type { Grade } from "@/lib/scorecard/modwash";
 
 const COMP_RADIUS = 4828; // 3 miles
+
+// Demographic rows worth handing the AI analyst (keeps the prompt focused).
+const DEMO_HIGHLIGHT_LABELS = new Set([
+  "Total Population",
+  "Median Age",
+  "Median Household Income",
+  "Per Capita Income",
+  "Daytime Population",
+  "Total Households",
+  "Avg Household Size",
+]);
 
 export interface SiteReport {
   ok: boolean;
@@ -40,6 +52,8 @@ export interface SiteReport {
   analogVars?: AnalogVars;
   /** Closest operational stores by demographic footprint. */
   analogs?: AnalogMatch[];
+  /** AI analyst narrative (only when ANTHROPIC_API_KEY is configured). */
+  reasoning?: Reasoning;
   demographics?: DemographicsReport;
 }
 
@@ -63,6 +77,43 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
   const cannibalization = findCannibalization(loc.lat, loc.lng, ringRadiusM);
   const analogs = analogVars ? matchAnalogs(analogVars) : [];
 
+  // AI analyst read — grounded in everything we just computed. Runs only when a
+  // key is configured; otherwise generateReasoning returns null and we omit it.
+  const washesByType: Record<string, number> = {};
+  for (const w of washes) washesByType[w.type] = (washesByType[w.type] ?? 0) + 1;
+  const demoHighlights = (demographics?.sections ?? [])
+    .flatMap((s) => s.rows)
+    .filter((r) => DEMO_HIGHLIGHT_LABELS.has(r.label))
+    .map((r) => ({ label: r.label, value: r.value }));
+  const reasoning =
+    (await generateReasoning({
+      matchedAddress: loc.matchedAddress ?? address,
+      variant: metrics.variant,
+      scorePercent: score.percent,
+      grade: score.grade,
+      criteria: score.criteria.map((c) => ({
+        label: c.label,
+        points: c.points,
+        rating: c.rating,
+      })),
+      competition: {
+        count: metrics.competition,
+        quality: metrics.qualityOfCompetition,
+        names: competitors.slice(0, 8).map((c) => c.name),
+      },
+      washesByType,
+      demographics: demoHighlights,
+      analogs: analogs.slice(0, 4).map((a) => ({
+        name: a.name,
+        city: a.city,
+        state: a.state,
+        matchPct: a.matchPct,
+      })),
+      cannibalization: cannibalization
+        .filter((c) => c.overlapPct >= 10)
+        .map((c) => ({ name: c.name, overlapPct: c.overlapPct })),
+    })) ?? undefined;
+
   return {
     ok: true,
     address,
@@ -77,6 +128,7 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
     cannibalization,
     analogVars: analogVars ?? undefined,
     analogs,
+    reasoning,
     demographics,
   };
 }

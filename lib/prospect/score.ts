@@ -9,6 +9,7 @@ import {
   gradeFor,
   type ScorecardInputs,
   type Grade,
+  type CriterionResult,
 } from "@/lib/scorecard/modwash";
 import type { SiteMetrics } from "./metrics";
 
@@ -40,6 +41,8 @@ export interface DesktopScore {
   grade: Grade;
   earned: number;
   possible: number;
+  /** The desktop-knowable criteria, scored (for narrative reasoning). */
+  criteria: CriterionResult[];
 }
 
 export function inputsFromMetrics(m: SiteMetrics): ScorecardInputs {
@@ -60,13 +63,13 @@ export function inputsFromMetrics(m: SiteMetrics): ScorecardInputs {
 /** Score a location on the desktop-knowable criteria. */
 export function desktopScore(m: SiteMetrics): DesktopScore {
   const full = scoreSite(inputsFromMetrics(m), m.variant);
+  const criteria = full.criteria.filter((c) => DESKTOP_IDS.has(c.id));
   let earned = 0;
   let possible = 0;
-  for (const c of full.criteria) {
-    if (!DESKTOP_IDS.has(c.id)) continue;
+  for (const c of criteria) {
     earned += c.earned;
     possible += c.possible;
   }
   const percent = possible ? earned / possible : 0;
-  return { percent, grade: gradeFor(percent), earned, possible };
+  return { percent, grade: gradeFor(percent), earned, possible, criteria };
 }
