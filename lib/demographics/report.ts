@@ -4,9 +4,10 @@
 // approximate vs Experian's custom trade area; the Experian-proprietary pieces
 // (2029 projections, Seasonal Population) are omitted.
 
-import { geocodeRobust, countyGrowth } from "@/lib/autofill/census";
+import { geocodeRobust, geocodeCoords, countyGrowth } from "@/lib/autofill/census";
 import { getTradeArea } from "@/lib/autofill/tradearea";
 import { getRingJobs } from "@/lib/autofill/lodes";
+import type { CtaAnchor } from "@/lib/autofill/places";
 
 export interface DemoRow {
   label: string;
@@ -22,12 +23,23 @@ export interface DemographicsReport {
   ok: boolean;
   error?: string;
   matchedAddress?: string;
+  /** The point the trade area is built around (site or anchor). */
   lat?: number;
   lng?: number;
   bgCount?: number;
   /** Human label for the trade area, e.g. "7-min drive-time" or "3-mi ring". */
   tradeArea?: string;
+  /** Trade-area boundary as [lng,lat] points, for drawing. */
+  polygon?: number[][];
   sections?: DemoSection[];
+}
+
+export interface DemographicsResult {
+  report: DemographicsReport;
+  /** Nearby Hutton anchors (Walmart/Sam's/…) for the CTA picker. */
+  anchors: CtaAnchor[];
+  /** The geocoded site (the address), distinct from the trade-area center. */
+  site: { lat: number; lng: number; matchedAddress: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +84,23 @@ async function acsRing(
   } catch {
     return [];
   }
+}
+
+/** Like acsRing but across every county the trade area touches (CTAs can span
+    several counties), one ACS call per county. */
+async function acsRingMulti(
+  vars: string[],
+  weights: Record<string, number>,
+  key: string,
+): Promise<Row[]> {
+  const counties = new Map<string, { state: string; county: string }>();
+  for (const g of Object.keys(weights)) {
+    counties.set(g.slice(0, 5), { state: g.slice(0, 2), county: g.slice(2, 5) });
+  }
+  const results = await Promise.all(
+    [...counties.values()].map((c) => acsRing(c.state, c.county, vars, weights, key)),
+  );
+  return results.flat();
 }
 
 /** Apportioned sum: each block group's value times its area-fraction weight. */
@@ -158,8 +187,27 @@ const pct = (part: number, whole: number) =>
 // Main
 // ---------------------------------------------------------------------------
 
+/** Geocode an address, then build the demographic summary over its trade area. */
 export async function fetchDemographicsReport(
   address: string,
+  minutes?: number,
+): Promise<DemographicsReport> {
+  if (!process.env.CENSUS_API_KEY) {
+    return { ok: false, error: "CENSUS_API_KEY is not configured on the server." };
+  }
+  const loc = await geocodeRobust(address);
+  if (!loc || !loc.state || !loc.county) {
+    return { ok: false, error: "Couldn't find that address. Check the spelling and try again." };
+  }
+  return fetchDemographicsForPoint(loc.lat, loc.lng, loc.matchedAddress, minutes);
+}
+
+/** Build the demographic summary over the trade area around any point (the site
+    or a chosen anchor). Aggregates ACS across every county the area touches. */
+export async function fetchDemographicsForPoint(
+  lat: number,
+  lng: number,
+  label: string,
   minutes?: number,
 ): Promise<DemographicsReport> {
   const key = process.env.CENSUS_API_KEY;
@@ -167,22 +215,17 @@ export async function fetchDemographicsReport(
     return { ok: false, error: "CENSUS_API_KEY is not configured on the server." };
   }
 
-  const loc = await geocodeRobust(address);
-  if (!loc || !loc.state || !loc.county) {
-    return { ok: false, error: "Couldn't find that address. Check the spelling and try again." };
-  }
-  const fips = { state: loc.state, county: loc.county };
-
-  const ta = await getTradeArea(loc.lat, loc.lng, minutes ? { minutes } : {});
+  const ta = await getTradeArea(lat, lng, minutes ? { minutes } : {});
   const weights = ta.weights;
   const geoids = Object.keys(weights);
   if (geoids.length === 0) {
-    return { ok: false, error: "No Census block groups found near that address." };
+    return { ok: false, error: "No Census block groups found for that area." };
   }
   const tradeAreaLabel =
     ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
+  const cfips = await geocodeCoords(lat, lng);
 
-  // Three batched ACS calls + jobs + growth, in parallel.
+  // Three batched ACS calls (across all counties) + jobs + growth, in parallel.
   const summaryVars = [
     "B01003_001E", "B01001_002E", "B01001_026E", "B01002_001E",
     "B11001_001E", "B25010_001E",
@@ -198,11 +241,11 @@ export async function fetchDemographicsReport(
   const eduVars = ["B15003_001E", ...EDU_BRACKETS.flatMap((b) => b.codes.map(eduVar))];
 
   const [summary, age, edu, jobs, growth] = await Promise.all([
-    acsRing(fips.state, fips.county, summaryVars, weights, key),
-    acsRing(fips.state, fips.county, ageVars, weights, key),
-    acsRing(fips.state, fips.county, eduVars, weights, key),
-    getRingJobs(fips.state, weights),
-    countyGrowth(fips.state, fips.county, key),
+    acsRingMulti(summaryVars, weights, key),
+    acsRingMulti(ageVars, weights, key),
+    acsRingMulti(eduVars, weights, key),
+    cfips ? getRingJobs(cfips.state, weights) : Promise.resolve(null),
+    cfips ? countyGrowth(cfips.state, cfips.county, key) : Promise.resolve(null),
   ]);
 
   if (summary.length === 0) {
@@ -332,11 +375,12 @@ export async function fetchDemographicsReport(
 
   return {
     ok: true,
-    matchedAddress: loc.matchedAddress,
-    lat: loc.lat,
-    lng: loc.lng,
+    matchedAddress: label,
+    lat,
+    lng,
     bgCount: geoids.length,
     tradeArea: tradeAreaLabel,
+    polygon: ta.polygon,
     sections,
   };
 }

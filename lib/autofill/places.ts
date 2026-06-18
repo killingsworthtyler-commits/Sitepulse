@@ -138,6 +138,68 @@ export async function findAnchors(
   }
 }
 
+// The big-box anchors Hutton draws CTAs around.
+const CTA_BRANDS: { brand: string; match: string[] }[] = [
+  { brand: "Walmart", match: ["walmart"] },
+  { brand: "Sam's Club", match: ["sam's club", "sams club"] },
+  { brand: "Publix", match: ["publix"] },
+  { brand: "Lowe's", match: ["lowe's", "lowes"] },
+  { brand: "Costco", match: ["costco"] },
+  { brand: "Target", match: ["target"] },
+  { brand: "BJ's", match: ["bj's", "bjs wholesale"] },
+  { brand: "Home Depot", match: ["home depot"] },
+];
+
+export interface CtaAnchor {
+  name: string;
+  brand: string;
+  lat: number;
+  lng: number;
+  distMi: number;
+}
+
+function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 3959;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(s));
+}
+
+/** Nearby Hutton anchor stores (Walmart, Sam's, Publix, Lowe's…), nearest first.
+    One per brand+location, deduped. Needs a key. */
+export async function findCtaAnchors(
+  lat: number,
+  lng: number,
+  key: string,
+  radius = 8000,
+): Promise<CtaAnchor[]> {
+  const anchors = await findAnchors(lat, lng, radius, key);
+  const seen = new Set<string>();
+  const out: CtaAnchor[] = [];
+  for (const a of anchors) {
+    const n = a.name.toLowerCase();
+    const brand = CTA_BRANDS.find((b) => b.match.some((m) => n.includes(m)));
+    if (!brand) continue;
+    const dedup = `${brand.brand}-${a.lat.toFixed(3)}-${a.lng.toFixed(3)}`;
+    if (seen.has(dedup)) continue;
+    seen.add(dedup);
+    out.push({
+      name: a.name,
+      brand: brand.brand,
+      lat: a.lat,
+      lng: a.lng,
+      distMi: Math.round(milesBetween(lat, lng, a.lat, a.lng) * 100) / 100,
+    });
+  }
+  out.sort((a, b) => a.distMi - b.distMi);
+  return out;
+}
+
 async function searchNearby(
   lat: number,
   lng: number,

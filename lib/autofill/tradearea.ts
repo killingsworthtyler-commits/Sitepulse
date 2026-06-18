@@ -22,6 +22,8 @@ export interface TradeArea {
   mode: "drivetime" | "ring";
   minutes?: number;
   radiusMi?: number;
+  /** The trade-area boundary as [lng,lat] points, for drawing. */
+  polygon?: number[][];
 }
 
 export const DEFAULT_DRIVE_MINUTES = 7;
@@ -193,7 +195,13 @@ export async function getTradeArea(
     if (ring) {
       const weights = await bgWeights(ring);
       if (Object.keys(weights).length > 0) {
-        return { weights, areaSqMi: ringAreaSqMi(ring), mode: "drivetime", minutes };
+        return {
+          weights,
+          areaSqMi: ringAreaSqMi(ring),
+          mode: "drivetime",
+          minutes,
+          polygon: ring,
+        };
       }
     }
   }
@@ -201,7 +209,13 @@ export async function getTradeArea(
   const radiusMi = opts.radiusMi ?? FALLBACK_RADIUS_MI;
   const circle = circlePolygon(lat, lng, radiusMi);
   const weights = await bgWeights(circle);
-  return { weights, areaSqMi: Math.PI * radiusMi * radiusMi, mode: "ring", radiusMi };
+  return {
+    weights,
+    areaSqMi: Math.PI * radiusMi * radiusMi,
+    mode: "ring",
+    radiusMi,
+    polygon: circle,
+  };
 }
 
 // ---------------------------------------------------------------------------

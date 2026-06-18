@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { demographicsAction } from "@/app/scorecard/demographics/actions";
-import type { DemographicsReport } from "@/lib/demographics/report";
+import type { DemographicsResult } from "@/lib/demographics/report";
+import { CtaMap } from "@/components/cta-map";
 
 export function DemographicsReportTool({
   initialAddress = "",
@@ -12,18 +13,26 @@ export function DemographicsReportTool({
 }) {
   const [address, setAddress] = useState(initialAddress);
   const [minutes, setMinutes] = useState(7);
+  const [anchorIdx, setAnchorIdx] = useState(-1); // -1 = site, else anchor index
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState<DemographicsReport | null>(null);
+  const [result, setResult] = useState<DemographicsResult | null>(null);
 
-  async function run(mins = minutes) {
+  async function run(mins = minutes, idx = anchorIdx) {
     if (!address.trim() || loading) return;
+    const a = idx >= 0 ? result?.anchors[idx] : undefined;
+    const anchor = a ? { lat: a.lat, lng: a.lng, label: `${a.brand} CTA` } : undefined;
     setLoading(true);
     try {
-      setReport(await demographicsAction(address, mins));
+      setResult(await demographicsAction(address, mins, anchor));
     } finally {
       setLoading(false);
     }
   }
+
+  const report = result?.report;
+  const anchors = result?.anchors ?? [];
+  const site = result?.site ?? null;
+  const activeAnchor = anchorIdx >= 0 ? anchors[anchorIdx] : null;
 
   return (
     <div>
@@ -49,26 +58,49 @@ export function DemographicsReportTool({
           </button>
         </div>
 
-        {/* Trade area: drive-time minutes */}
-        <div className="mt-3 flex items-center gap-2">
-          <span className="text-xs font-medium text-slate-500">Trade area:</span>
-          <select
-            value={minutes}
-            onChange={(e) => {
-              const m = Number(e.target.value);
-              setMinutes(m);
-              if (report?.ok) run(m);
-            }}
-            className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          >
-            {[5, 6, 7, 8, 9, 10, 12, 15, 20].map((m) => (
-              <option key={m} value={m}>
-                {m} min drive
-              </option>
-            ))}
-          </select>
+        {/* Trade-area controls: anchor CTA + drive-time */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          {anchors.length > 0 && (
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              Trade area around:
+              <select
+                value={anchorIdx}
+                onChange={(e) => {
+                  const i = Number(e.target.value);
+                  setAnchorIdx(i);
+                  if (report?.ok) run(minutes, i);
+                }}
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+              >
+                <option value={-1}>Site</option>
+                {anchors.map((a, i) => (
+                  <option key={`${a.brand}-${i}`} value={i}>
+                    {a.brand} CTA — {a.distMi} mi
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            Drive-time:
+            <select
+              value={minutes}
+              onChange={(e) => {
+                const m = Number(e.target.value);
+                setMinutes(m);
+                if (report?.ok) run(m, anchorIdx);
+              }}
+              className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            >
+              {[5, 6, 7, 8, 9, 10, 12, 15, 20].map((m) => (
+                <option key={m} value={m}>
+                  {m} min drive
+                </option>
+              ))}
+            </select>
+          </label>
           <span className="text-[11px] text-slate-400">
-            larger = bigger trade area
+            Pick an anchor to build the CTA around it; larger drive-time = bigger area.
           </span>
         </div>
 
@@ -80,8 +112,8 @@ export function DemographicsReportTool({
         {report?.ok && (
           <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
-              {report.matchedAddress} · {report.tradeArea} ({report.bgCount}{" "}
-              block groups) · US Census ACS 5-yr
+              {report.matchedAddress} · {report.tradeArea} ({report.bgCount} block
+              groups) · US Census ACS 5-yr
             </p>
             <Link
               href={`/report?address=${encodeURIComponent(address)}`}
@@ -93,7 +125,34 @@ export function DemographicsReportTool({
         )}
       </div>
 
-      {/* Report */}
+      {/* CTA map */}
+      {report?.ok && report.polygon && site && (
+        <div className="mt-4">
+          <CtaMap
+            polygon={report.polygon}
+            site={site}
+            anchor={activeAnchor}
+          />
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: "#eab308", opacity: 0.6 }} />
+              {activeAnchor ? `${activeAnchor.brand} CTA` : "Trade area"} ({report.tradeArea})
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "#ff008c" }} />
+              Proposed site
+            </span>
+            {activeAnchor && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "#1d4ed8" }} />
+                {activeAnchor.brand} anchor
+              </span>
+            )}
+          </p>
+        </div>
+      )}
+
+      {/* Report sections */}
       {report?.ok && report.sections && (
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {report.sections.map((s) => (
@@ -114,9 +173,7 @@ export function DemographicsReportTool({
                   >
                     <span className="text-slate-600">{r.label}</span>
                     <span className="flex items-baseline gap-2 tabular-nums">
-                      {r.pct && (
-                        <span className="text-[11px] text-slate-400">{r.pct}</span>
-                      )}
+                      {r.pct && <span className="text-[11px] text-slate-400">{r.pct}</span>}
                       <span className="font-medium text-slate-900">{r.value}</span>
                     </span>
                   </li>
@@ -127,11 +184,11 @@ export function DemographicsReportTool({
         </div>
       )}
 
-      {!report && (
+      {!result && (
         <p className="mt-6 text-center text-sm text-slate-400">
-          Enter a site address to pull a full demographic summary — population,
-          age, income, employment, housing, vehicles, and education for the
-          drive-time trade area.
+          Enter a site address for a full demographic summary. We&apos;ll also find
+          nearby anchors (Walmart, Sam&apos;s, Publix, Lowe&apos;s…) so you can build
+          the trade area around the CTA, just like the Experian reports.
         </p>
       )}
     </div>
