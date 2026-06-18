@@ -99,9 +99,9 @@ export default async function ReportPage({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* Map */}
-        <div>
+        <div className="min-w-0">
           <ReportMap
             site={{ lat: report.lat!, lng: report.lng!, label: title }}
             competitors={report.competitors ?? []}
@@ -113,13 +113,14 @@ export default async function ReportPage({
             </span>
             <span className="flex items-center gap-1.5">
               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "#ef4444" }} />
-              Competing wash
+              {report.competitors?.length ?? 0} competing wash
+              {(report.competitors?.length ?? 0) === 1 ? "" : "es"}
             </span>
           </div>
         </div>
 
         {/* Scorecard metrics */}
-        <aside className="rounded-lg border border-slate-200 bg-white ring-1 ring-slate-900/[0.02]">
+        <aside className="min-w-0 rounded-lg border border-slate-200 bg-white ring-1 ring-slate-900/[0.02]">
           <div className="brand-gradient rounded-t-lg px-4 py-2">
             <h2 className="text-sm font-bold uppercase tracking-wide text-white">
               Scorecard Metrics
