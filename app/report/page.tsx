@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { buildSiteReport } from "@/lib/report/build";
+import { dbGetReport, dbSaveReport, reportsConfigured } from "@/lib/db/reports";
 import { ReportMap } from "@/components/report-map";
 import { ShareButton } from "@/components/share-button";
 import { PrintButton } from "@/components/print-button";
@@ -26,9 +27,9 @@ function distM(aLat: number, aLng: number, bLat: number, bLng: number): number {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ address?: string; name?: string; deal?: string }>;
+  searchParams: Promise<{ address?: string; name?: string; deal?: string; refresh?: string }>;
 }) {
-  const { address, name, deal } = await searchParams;
+  const { address, name, deal, refresh } = await searchParams;
   const dealType = deal === "acquisition" ? "acquisition" : "build";
 
   if (!address) {
@@ -48,7 +49,21 @@ export default async function ReportPage({
     );
   }
 
-  const report = await buildSiteReport(address, dealType);
+  // Cache-first: a report makes many (some billed) external calls, so serve a
+  // saved copy when we have one. `?refresh=1` forces a fresh build + re-save.
+  const wantRefresh = refresh === "1";
+  const cached = wantRefresh ? null : await dbGetReport(address, dealType);
+  let report = cached?.report ?? null;
+  let generatedAt = cached?.generatedAt ?? null;
+  let fromCache = !!cached;
+  if (!report) {
+    report = await buildSiteReport(address, dealType);
+    if (report.ok && reportsConfigured()) {
+      await dbSaveReport(address, dealType, report);
+    }
+    generatedAt = new Date().toISOString();
+    fromCache = false;
+  }
 
   if (!report.ok) {
     return (
@@ -123,6 +138,29 @@ export default async function ReportPage({
           <ShareButton subject={`ModWash Site Report — ${title}`} />
         </div>
       </div>
+
+      {/* Cache status + refresh */}
+      {generatedAt && (
+        <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <span className="text-slate-500">
+            {fromCache ? "Saved report" : "Freshly generated"} ·{" "}
+            {new Date(generatedAt).toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+            {fromCache && " · served from cache (no API calls)"}
+          </span>
+          <Link
+            href={`/report?address=${encodeURIComponent(address)}${name ? `&name=${encodeURIComponent(name)}` : ""}${dealType === "acquisition" ? "&deal=acquisition" : ""}&refresh=1`}
+            className="shrink-0 font-semibold text-brand-blue hover:underline"
+          >
+            ↻ Refresh data
+          </Link>
+        </div>
+      )}
 
       {/* Deal type: build (greenfield) vs acquisition (buying the on-site wash) */}
       {(() => {
