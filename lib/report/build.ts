@@ -9,6 +9,7 @@ import {
   type Competitor,
   type TypedWash,
 } from "@/lib/autofill/places";
+import { popRingRadiusMeters } from "@/lib/autofill/tradearea";
 import { gatherSiteMetrics, type SiteMetrics } from "@/lib/prospect/metrics";
 import { desktopScore } from "@/lib/prospect/score";
 import { fetchDemographicsReport, type DemographicsReport } from "@/lib/demographics/report";
@@ -28,6 +29,8 @@ export interface SiteReport {
   competitors?: Competitor[];
   /** Every nearby car wash, labeled by type (for the breakdown). */
   washes?: TypedWash[];
+  /** Radius (meters) of the 20K-population competition ring. */
+  ringRadiusM?: number;
   demographics?: DemographicsReport;
 }
 
@@ -38,11 +41,12 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
   }
 
   const gKey = process.env.GOOGLE_MAPS_API_KEY;
-  const [metrics, competitors, washes, demographics] = await Promise.all([
+  const [metrics, competitors, washes, demographics, ringRadiusM] = await Promise.all([
     gatherSiteMetrics(loc.lat, loc.lng),
     gKey ? findCompetitors(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
     gKey ? findCarWashesTyped(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
     fetchDemographicsReport(address),
+    popRingRadiusMeters(loc.lat, loc.lng),
   ]);
 
   const score = desktopScore(metrics);
@@ -57,6 +61,7 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
     metrics,
     competitors,
     washes,
+    ringRadiusM,
     demographics,
   };
 }

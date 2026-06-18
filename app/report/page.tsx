@@ -11,6 +11,18 @@ export const metadata = {
 
 const n0 = (x: number) => Math.round(x).toLocaleString("en-US");
 
+function distM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
 export default async function ReportPage({
   searchParams,
 }: {
@@ -79,6 +91,17 @@ export default async function ReportPage({
     names: (report.washes ?? []).filter((w) => w.type === type).map((w) => w.name),
   })).filter((g) => g.names.length > 0);
 
+  // 20K-pop competition rings: a competitor whose ring overlaps the site ring
+  // (centers within 2× the radius) is "direct competition" — numbered on the map.
+  const ringRadiusM = report.ringRadiusM ?? 1.44 * 1609.34;
+  const ringMi = (ringRadiusM / 1609.34).toFixed(2);
+  const allComps = report.competitors ?? [];
+  const ringed = allComps
+    .filter((c) => distM(report.lat!, report.lng!, c.lat, c.lng) <= 2 * ringRadiusM)
+    .map((c, i) => ({ name: c.name, lat: c.lat, lng: c.lng, n: i + 1 }));
+  const ringedKeys = new Set(ringed.map((c) => `${c.lat},${c.lng}`));
+  const others = allComps.filter((c) => !ringedKeys.has(`${c.lat},${c.lng}`));
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       {/* Header */}
@@ -119,28 +142,35 @@ export default async function ReportPage({
         <div className="min-w-0">
           <ReportMap
             site={{ lat: report.lat!, lng: report.lng!, label: title }}
-            competitors={report.competitors ?? []}
+            ringed={ringed}
+            others={others}
+            ringRadiusM={ringRadiusM}
           />
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
             <span className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-3 w-3 rounded-full border-2"
-                style={{ borderColor: "#ff008c" }}
-              />
-              Site — 1.44-mi ring
+              <span className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: "#ff008c" }} />
+              Site — {ringMi}-mi 20K-pop ring
             </span>
             <span className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-3 w-3 rounded-full border-2"
-                style={{ borderColor: "#ef4444" }}
-              />
-              {report.competitors?.length ?? 0} competing wash
-              {(report.competitors?.length ?? 0) === 1 ? "" : "es"} — 1.44-mi ring each
+              <span className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: "#ef4444" }} />
+              {ringed.length} direct competitor{ringed.length === 1 ? "" : "s"} (rings overlap)
             </span>
-            <span className="text-slate-400">
-              Where a competitor ring overlaps the site ring = direct competition.
-            </span>
+            {others.length > 0 && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#f87171" }} />
+                {others.length} other wash{others.length === 1 ? "" : "es"} nearby
+              </span>
+            )}
           </div>
+          {ringed.length > 0 && (
+            <ol className="mt-2 grid gap-x-4 gap-y-0.5 text-[11px] text-slate-600 sm:grid-cols-2">
+              {ringed.map((c) => (
+                <li key={c.n} className="truncate">
+                  <span className="font-semibold text-rose-600">{c.n}.</span> {c.name}
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
 
         {/* Scorecard metrics */}

@@ -203,3 +203,118 @@ export async function getTradeArea(
   const weights = await bgWeights(circle);
   return { weights, areaSqMi: Math.PI * radiusMi * radiusMi, mode: "ring", radiusMi };
 }
+
+// ---------------------------------------------------------------------------
+// 20K-population ring radius — Hutton's competition trade area. The radius is
+// sized so the Census population inside ≈ the target, so it shrinks in dense
+// markets and grows in rural ones (matching the "20K Pop Ring" methodology).
+// ---------------------------------------------------------------------------
+
+const FALLBACK_RING_M = 1.44 * 1609.34;
+
+async function bgCentroidsWithin(
+  lat: number,
+  lng: number,
+  meters: number,
+): Promise<{ geoid: string; lat: number; lng: number }[]> {
+  const params = new URLSearchParams({
+    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    distance: String(meters),
+    units: "esriSRUnit_Meter",
+    spatialRel: "esriSpatialRelIntersects",
+    outFields: "GEOID,CENTLAT,CENTLON",
+    returnGeometry: "false",
+    f: "json",
+  });
+  try {
+    const res = await fetch(`${TIGER_BG}?${params.toString()}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.features ?? [])
+      .map((f: { attributes?: { GEOID?: string; CENTLAT?: string; CENTLON?: string } }) => {
+        const a = f.attributes ?? {};
+        const la = Number(a.CENTLAT);
+        const lo = Number(a.CENTLON);
+        if (!a.GEOID || !Number.isFinite(la) || !Number.isFinite(lo)) return null;
+        return { geoid: a.GEOID, lat: la, lng: lo };
+      })
+      .filter(Boolean) as { geoid: string; lat: number; lng: number }[];
+  } catch {
+    return [];
+  }
+}
+
+async function countyPop(state: string, county: string, key: string): Promise<Map<string, number>> {
+  const url =
+    `https://api.census.gov/data/2023/acs/acs5?get=B01003_001E` +
+    `&for=block%20group:*&in=state:${state}%20county:${county}&key=${key}`;
+  const map = new Map<string, number>();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return map;
+    const rows: string[][] = await res.json();
+    const h = rows[0];
+    const ip = h.indexOf("B01003_001E");
+    const is = h.indexOf("state");
+    const ic = h.indexOf("county");
+    const it = h.indexOf("tract");
+    const ib = h.indexOf("block group");
+    for (let i = 1; i < rows.length; i++) {
+      const p = Number(rows[i][ip]);
+      if (p > 0) map.set(`${rows[i][is]}${rows[i][ic]}${rows[i][it]}${rows[i][ib]}`, p);
+    }
+  } catch {
+    /* leave empty */
+  }
+  return map;
+}
+
+function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+/** Radius (meters) of the ring whose Census population ≈ target (default 20,000). */
+export async function popRingRadiusMeters(
+  lat: number,
+  lng: number,
+  target = 20000,
+): Promise<number> {
+  const key = process.env.CENSUS_API_KEY;
+  if (!key) return FALLBACK_RING_M;
+  const cents = await bgCentroidsWithin(lat, lng, 14000);
+  if (cents.length === 0) return FALLBACK_RING_M;
+
+  const counties = new Map<string, { s: string; co: string }>();
+  for (const c of cents) {
+    counties.set(c.geoid.slice(0, 5), { s: c.geoid.slice(0, 2), co: c.geoid.slice(2, 5) });
+  }
+  const maps = await Promise.all([...counties.values()].map((c) => countyPop(c.s, c.co, key)));
+  const pop = new Map<string, number>();
+  for (const m of maps) for (const [g, p] of m) pop.set(g, p);
+
+  const byDist = cents
+    .map((c) => ({ d: haversineM(lat, lng, c.lat, c.lng), p: pop.get(c.geoid) ?? 0 }))
+    .sort((a, b) => a.d - b.d);
+
+  let cum = 0;
+  let r = FALLBACK_RING_M;
+  for (const c of byDist) {
+    cum += c.p;
+    if (cum >= target) {
+      r = c.d || FALLBACK_RING_M;
+      break;
+    }
+    r = Math.max(r, c.d);
+  }
+  return Math.min(14000, Math.max(800, r));
+}
