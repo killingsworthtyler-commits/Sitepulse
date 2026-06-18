@@ -218,8 +218,9 @@ const NON_COMPETITOR_NAME = [
   "u-wash", "u wash", "do it yourself", "do-it-yourself",
   "spot free", "spot-free", "in bay", "in-bay",
   "full service", "full-serve", "full serve",
-  // not actual washes (B2B / retail)
-  "consultants", "consulting", "supply", "equipment", "gift",
+  "shammy", "buff n shine", "buff & shine", "buff and shine",
+  // not actual washes (B2B / retail / mis-tagged)
+  "consultants", "consulting", "supply", "equipment", "gift", "car seat",
   // gas / convenience brands that still come back typed car_wash
   "circle k", "amoco", "exxon", "shell", "marathon", "speedway",
   "wawa", "sheetz", "racetrac", "quiktrip", "kwik trip", "murphy",
