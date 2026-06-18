@@ -121,15 +121,24 @@ export default async function ReportPage({
             site={{ lat: report.lat!, lng: report.lng!, label: title }}
             competitors={report.competitors ?? []}
           />
-          <div className="mt-2 flex items-center gap-4 text-[11px] text-slate-500">
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
             <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "#ff008c" }} />
-              Site
+              <span
+                className="inline-block h-3 w-3 rounded-full border-2"
+                style={{ borderColor: "#ff008c" }}
+              />
+              Site — 1.44-mi ring
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "#ef4444" }} />
+              <span
+                className="inline-block h-3 w-3 rounded-full border-2"
+                style={{ borderColor: "#ef4444" }}
+              />
               {report.competitors?.length ?? 0} competing wash
-              {(report.competitors?.length ?? 0) === 1 ? "" : "es"}
+              {(report.competitors?.length ?? 0) === 1 ? "" : "es"} — 1.44-mi ring each
+            </span>
+            <span className="text-slate-400">
+              Where a competitor ring overlaps the site ring = direct competition.
             </span>
           </div>
         </div>

@@ -1,7 +1,13 @@
 "use client";
 
-import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
+import { useEffect } from "react";
+import { APIProvider, Map, Marker, useMap } from "@vis.gl/react-google-maps";
 import type { Competitor } from "@/lib/autofill/places";
+
+/** 1.44-mile "20K ring" radius (Hutton's competition trade area), in meters. */
+const RING_M = 1.44 * 1609.34;
+const SITE_COLOR = "#ff008c";
+const COMP_COLOR = "#ef4444";
 
 /** Teardrop pin as an SVG data-URI. */
 function pin(fill: string, label: string, w: number): string {
@@ -14,8 +20,72 @@ function pin(fill: string, label: string, w: number): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-const SITE_PIN = pin("#ff008c", "★", 48);
-const COMP_PIN = pin("#ef4444", "", 32);
+const SITE_PIN = pin(SITE_COLOR, "★", 46);
+const COMP_PIN = pin(COMP_COLOR, "", 28);
+
+/** Draws the 1.44-mi trade-area rings: the site plus each competitor. Overlap
+    between a competitor ring and the site ring = direct competition. */
+function TradeRings({
+  site,
+  competitors,
+}: {
+  site: { lat: number; lng: number };
+  competitors: Competitor[];
+}) {
+  const map = useMap("report");
+  useEffect(() => {
+    if (!map) return;
+    const circles: google.maps.Circle[] = [];
+
+    for (const c of competitors) {
+      circles.push(
+        new google.maps.Circle({
+          map,
+          center: { lat: c.lat, lng: c.lng },
+          radius: RING_M,
+          strokeColor: COMP_COLOR,
+          strokeOpacity: 0.85,
+          strokeWeight: 2,
+          fillColor: COMP_COLOR,
+          fillOpacity: 0.06,
+          clickable: false,
+          zIndex: 2,
+        }),
+      );
+    }
+    // Site ring on top, distinct color.
+    circles.push(
+      new google.maps.Circle({
+        map,
+        center: site,
+        radius: RING_M,
+        strokeColor: SITE_COLOR,
+        strokeOpacity: 1,
+        strokeWeight: 3.5,
+        fillColor: SITE_COLOR,
+        fillOpacity: 0.05,
+        clickable: false,
+        zIndex: 4,
+      }),
+    );
+
+    // Frame all the rings.
+    const bounds = new google.maps.LatLngBounds();
+    const dLat = RING_M / 111320;
+    const ext = (lat: number, lng: number) => {
+      const dLng = RING_M / (111320 * Math.cos((lat * Math.PI) / 180));
+      bounds.extend({ lat: lat + dLat, lng: lng + dLng });
+      bounds.extend({ lat: lat - dLat, lng: lng - dLng });
+    };
+    ext(site.lat, site.lng);
+    competitors.forEach((c) => ext(c.lat, c.lng));
+    map.fitBounds(bounds, 40);
+
+    return () => circles.forEach((c) => c.setMap(null));
+  }, [map, site, competitors]);
+
+  return null;
+}
 
 export function ReportMap({
   site,
@@ -27,20 +97,21 @@ export function ReportMap({
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     return (
-      <div className="flex h-[440px] items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-800">
+      <div className="flex h-[460px] items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-800">
         Map key not set (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY).
       </div>
     );
   }
   return (
-    <div className="h-[440px] overflow-hidden rounded-lg border border-slate-200">
+    <div className="h-[460px] overflow-hidden rounded-lg border border-slate-200">
       <APIProvider apiKey={apiKey}>
         <Map
+          id="report"
           defaultCenter={{ lat: site.lat, lng: site.lng }}
-          defaultZoom={13}
+          defaultZoom={12}
           gestureHandling="cooperative"
           clickableIcons={false}
-          mapTypeControl
+          mapTypeControl={false}
           style={{ width: "100%", height: "100%" }}
         >
           {competitors.map((c, i) => (
@@ -58,6 +129,7 @@ export function ReportMap({
             title={site.label}
             zIndex={100}
           />
+          <TradeRings site={site} competitors={competitors} />
         </Map>
       </APIProvider>
     </div>
