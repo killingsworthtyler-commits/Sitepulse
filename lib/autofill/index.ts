@@ -1,10 +1,6 @@
 import type { Variant } from "@/lib/scorecard/modwash";
-import {
-  geocodeRobust,
-  ringBlockGroupGeoids,
-  ringDemographics,
-  countyGrowth,
-} from "./census";
+import { geocodeRobust, ringDemographics, countyGrowth } from "./census";
+import { getTradeArea } from "./tradearea";
 import { getRingJobs } from "./lodes";
 import { nearestAadt } from "./aadt";
 import { estimateSnowDays, suggestVariant } from "./climate";
@@ -34,8 +30,6 @@ export interface AutofillResult {
   fields: Record<string, AutofillField>;
   warnings: string[];
 }
-
-const RING_METERS = 4828; // 3 miles — matches the trade-area magnitude in the data
 
 export async function autofillSite(address: string): Promise<AutofillResult> {
   const geo = await geocodeRobust(address);
@@ -129,25 +123,30 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
     );
   }
 
-  // Demographics — real ACS 3-mile block-group ring (needs free key)
+  // Demographics — ACS over the trade area (drive-time when keyed, else ring)
   const key = process.env.CENSUS_API_KEY;
-  const geoids = await ringBlockGroupGeoids(geo.lat, geo.lng, RING_METERS);
+  const ta = await getTradeArea(geo.lat, geo.lng);
+  const geoids = ta.geoids;
+  const taLabel =
+    ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
   const demo = await ringDemographics(geo.state, geo.county, geoids, key);
 
   const ringNote =
-    "Census ACS 3-mi block-group ring — approximate; concentric rings read higher than custom trade-area reports, so review.";
+    ta.mode === "drivetime"
+      ? `Census ACS over a ${ta.minutes}-min drive-time trade area — review against your own report.`
+      : "Census ACS block-group ring — approximate; review against custom trade-area reports.";
 
   if (demo) {
     fields.population = {
       value: demo.population,
-      source: `US Census ACS — 3-mi ring (${demo.bgCount} block groups)`,
+      source: `US Census ACS — ${taLabel} (${demo.bgCount} block groups)`,
       confidence: "data",
       note: ringNote,
     };
     if (demo.medianIncome > 0) {
       fields.medianIncome = {
         value: demo.medianIncome,
-        source: "US Census ACS — 3-mi ring (household-weighted)",
+        source: `US Census ACS — ${taLabel} (household-weighted)`,
         confidence: "data",
         note: ringNote,
       };
@@ -161,7 +160,7 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
           0,
           Math.round(demo.population + jobs - demo.employedResidents),
         ),
-        source: "Census ACS + LODES — 3-mi ring",
+        source: `Census ACS + LODES — ${taLabel}`,
         confidence: "estimate",
         note: "Residents + jobs in area − employed residents. Approximate.",
       };

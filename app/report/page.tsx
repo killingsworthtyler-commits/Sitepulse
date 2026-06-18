@@ -143,7 +143,7 @@ export default async function ReportPage({
             Demographics
           </h2>
           <p className="mb-4 text-xs text-slate-500">
-            US Census ACS 5-yr · 3-mile ring ({report.demographics.bgCount} block groups)
+            US Census ACS 5-yr · {report.demographics.tradeArea} ({report.demographics.bgCount} block groups)
           </p>
           <div className="grid gap-4 lg:grid-cols-2">
             {report.demographics.sections.map((s) => (

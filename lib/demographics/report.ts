@@ -4,11 +4,9 @@
 // approximate vs Experian's custom trade area; the Experian-proprietary pieces
 // (2029 projections, Seasonal Population) are omitted.
 
-import { geocodeRobust, ringBlockGroupGeoids, countyGrowth } from "@/lib/autofill/census";
+import { geocodeRobust, countyGrowth } from "@/lib/autofill/census";
+import { getTradeArea } from "@/lib/autofill/tradearea";
 import { getRingJobs } from "@/lib/autofill/lodes";
-
-const RING_METERS = 4828; // 3 miles
-const RING_SQ_MI = Math.PI * 3 * 3; // ~28.3 sq mi (circle of r=3mi)
 
 export interface DemoRow {
   label: string;
@@ -27,7 +25,8 @@ export interface DemographicsReport {
   lat?: number;
   lng?: number;
   bgCount?: number;
-  ringMiles?: number;
+  /** Human label for the trade area, e.g. "7-min drive-time" or "3-mi ring". */
+  tradeArea?: string;
   sections?: DemoSection[];
 }
 
@@ -157,6 +156,7 @@ const pct = (part: number, whole: number) =>
 
 export async function fetchDemographicsReport(
   address: string,
+  minutes?: number,
 ): Promise<DemographicsReport> {
   const key = process.env.CENSUS_API_KEY;
   if (!key) {
@@ -169,11 +169,14 @@ export async function fetchDemographicsReport(
   }
   const fips = { state: loc.state, county: loc.county };
 
-  const geoids = await ringBlockGroupGeoids(loc.lat, loc.lng, RING_METERS);
+  const ta = await getTradeArea(loc.lat, loc.lng, minutes ? { minutes } : {});
+  const geoids = ta.geoids;
   if (geoids.length === 0) {
     return { ok: false, error: "No Census block groups found near that address." };
   }
   const ring = new Set(geoids);
+  const tradeAreaLabel =
+    ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
 
   // Three batched ACS calls + jobs + growth, in parallel.
   const summaryVars = [
@@ -223,7 +226,7 @@ export async function fetchDemographicsReport(
     { label: "Male", value: n0(male), pct: pct(male, pop) },
     { label: "Female", value: n0(female), pct: pct(female, pop) },
     { label: "Median Age", value: medianAge ? medianAge.toFixed(1) : "—" },
-    { label: "Population Density (per sq mi)", value: n0(pop / RING_SQ_MI) },
+    { label: "Population Density (per sq mi)", value: ta.areaSqMi > 0 ? n0(pop / ta.areaSqMi) : "—" },
   ];
   if (daytime != null) popRows.push({ label: "Daytime Population", value: n0(daytime) });
   if (growth != null) popRows.push({ label: "Projected Growth (annualized)", value: `${growth.toFixed(2)}%` });
@@ -329,7 +332,7 @@ export async function fetchDemographicsReport(
     lat: loc.lat,
     lng: loc.lng,
     bgCount: geoids.length,
-    ringMiles: 3,
+    tradeArea: tradeAreaLabel,
     sections,
   };
 }

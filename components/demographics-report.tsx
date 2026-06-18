@@ -11,14 +11,15 @@ export function DemographicsReportTool({
   initialAddress?: string;
 }) {
   const [address, setAddress] = useState(initialAddress);
+  const [minutes, setMinutes] = useState(7);
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<DemographicsReport | null>(null);
 
-  async function run() {
+  async function run(mins = minutes) {
     if (!address.trim() || loading) return;
     setLoading(true);
     try {
-      setReport(await demographicsAction(address));
+      setReport(await demographicsAction(address, mins));
     } finally {
       setLoading(false);
     }
@@ -40,12 +41,36 @@ export function DemographicsReportTool({
             className="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
           />
           <button
-            onClick={run}
+            onClick={() => run()}
             disabled={loading || !address.trim()}
             className="brand-gradient rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading ? "Pulling Census…" : "Generate report"}
           </button>
+        </div>
+
+        {/* Trade area: drive-time minutes */}
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-500">Trade area:</span>
+          <div className="flex rounded-md bg-slate-100 p-0.5 text-xs font-medium">
+            {[5, 7, 10, 15].map((mDrive) => (
+              <button
+                key={mDrive}
+                onClick={() => {
+                  setMinutes(mDrive);
+                  if (report?.ok) run(mDrive);
+                }}
+                className={`rounded px-2.5 py-1 transition-colors ${
+                  minutes === mDrive
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {mDrive} min
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] text-slate-400">drive-time</span>
         </div>
 
         {report && !report.ok && (
@@ -56,8 +81,8 @@ export function DemographicsReportTool({
         {report?.ok && (
           <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
-              {report.matchedAddress} · {report.ringMiles}-mi ring (
-              {report.bgCount} block groups) · US Census ACS 5-yr
+              {report.matchedAddress} · {report.tradeArea} ({report.bgCount}{" "}
+              block groups) · US Census ACS 5-yr
             </p>
             <Link
               href={`/report?address=${encodeURIComponent(address)}`}
@@ -107,7 +132,7 @@ export function DemographicsReportTool({
         <p className="mt-6 text-center text-sm text-slate-400">
           Enter a site address to pull a full demographic summary — population,
           age, income, employment, housing, vehicles, and education for the
-          3-mile trade area.
+          drive-time trade area.
         </p>
       )}
     </div>

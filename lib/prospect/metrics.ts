@@ -2,12 +2,8 @@
 // half of a site evaluation. Reuses the same free/keyed providers the address
 // auto-fill uses, but starts from coordinates instead of a typed address.
 
-import {
-  geocodeCoords,
-  ringBlockGroupGeoids,
-  ringDemographics,
-  countyGrowth,
-} from "@/lib/autofill/census";
+import { geocodeCoords, ringDemographics, countyGrowth } from "@/lib/autofill/census";
+import { getTradeArea } from "@/lib/autofill/tradearea";
 import { getRingJobs } from "@/lib/autofill/lodes";
 import { nearestAadt } from "@/lib/autofill/aadt";
 import {
@@ -16,8 +12,6 @@ import {
 } from "@/lib/autofill/places";
 import { estimateSnowDays, suggestVariant } from "@/lib/autofill/climate";
 import type { Variant } from "@/lib/scorecard/modwash";
-
-const RING_METERS = 4828; // 3 miles — matches the trade-area magnitude
 
 /** The desktop-knowable inputs for a location. Site-visit fields are not here. */
 export interface SiteMetrics {
@@ -47,9 +41,7 @@ export async function gatherSiteMetrics(
 
   // Kick off the independent lookups together.
   const fips = await geocodeCoords(lat, lng);
-  const geoids = fips
-    ? await ringBlockGroupGeoids(lat, lng, RING_METERS)
-    : [];
+  const geoids = fips ? (await getTradeArea(lat, lng)).geoids : [];
 
   const [demo, growth, aadt, comp, driver] = await Promise.all([
     fips ? ringDemographics(fips.state, fips.county, geoids, censusKey) : null,
