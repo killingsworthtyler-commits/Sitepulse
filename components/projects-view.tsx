@@ -157,7 +157,9 @@ export function ProjectsView({ projects }: { projects: Project[] }) {
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500">
-                  No projects match your filters.
+                  {projects.length === 0
+                    ? "No active projects yet — they'll appear here as projects are added."
+                    : "No projects match your filters."}
                 </td>
               </tr>
             )}
