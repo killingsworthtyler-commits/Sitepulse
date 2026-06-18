@@ -301,6 +301,10 @@ const NON_WASH_NAMES = [
   "oil change", "lube", "smog", "muffler", "transmission", "tire", "brake",
   // electronics / dealership / rental
   "audio", "stereo", "dealership", "rent a car", "rent-a-car", "rental",
+  // car buying / selling / dealers (e.g. "Fast Auto Buy") — same Google type as
+  // a wash, so only the name distinguishes them.
+  "auto buy", "we buy", "cash for cars", "car buyers", "buy here",
+  "used car", "pre-owned", "auto sales", "auto brokers", "auto mall",
 ];
 const NON_COMPETITOR_NAME = [
   ...SELF_SERVE_NAMES,
