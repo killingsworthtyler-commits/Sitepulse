@@ -52,25 +52,24 @@ export function DemographicsReportTool({
         {/* Trade area: drive-time minutes */}
         <div className="mt-3 flex items-center gap-2">
           <span className="text-xs font-medium text-slate-500">Trade area:</span>
-          <div className="flex rounded-md bg-slate-100 p-0.5 text-xs font-medium">
-            {[5, 7, 10, 15].map((mDrive) => (
-              <button
-                key={mDrive}
-                onClick={() => {
-                  setMinutes(mDrive);
-                  if (report?.ok) run(mDrive);
-                }}
-                className={`rounded px-2.5 py-1 transition-colors ${
-                  minutes === mDrive
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {mDrive} min
-              </button>
+          <select
+            value={minutes}
+            onChange={(e) => {
+              const m = Number(e.target.value);
+              setMinutes(m);
+              if (report?.ok) run(m);
+            }}
+            className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+          >
+            {[5, 6, 7, 8, 9, 10, 12, 15, 20].map((m) => (
+              <option key={m} value={m}>
+                {m} min drive
+              </option>
             ))}
-          </div>
-          <span className="text-[11px] text-slate-400">drive-time</span>
+          </select>
+          <span className="text-[11px] text-slate-400">
+            larger = bigger trade area
+          </span>
         </div>
 
         {report && !report.ok && (

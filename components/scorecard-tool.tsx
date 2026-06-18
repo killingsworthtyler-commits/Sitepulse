@@ -70,6 +70,7 @@ export function ScorecardTool({
   const [address, setAddress] = useState(initial?.address ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [matched, setMatched] = useState(initial?.address ?? "");
+  const [driveMin, setDriveMin] = useState(7);
   const [loading, setLoading] = useState(false);
   const [autofilled, setAutofilled] = useState<AutoMap>({});
   const [banner, setBanner] = useState<
@@ -100,7 +101,7 @@ export function ScorecardTool({
     setLoading(true);
     setBanner(null);
     try {
-      const res = await autofillAction(address);
+      const res = await autofillAction(address, driveMin);
       if (!res.ok) {
         setBanner({ warnings: [], error: res.error });
         return;
@@ -161,6 +162,25 @@ export function ScorecardTool({
             >
               {loading ? "Filling…" : "Auto-fill"}
             </button>
+          </div>
+
+          {/* Trade area — drive-time minutes used for demographics + competition */}
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[11px] font-medium text-slate-500">Trade area:</span>
+            <select
+              value={driveMin}
+              onChange={(e) => setDriveMin(Number(e.target.value))}
+              className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
+            >
+              {[5, 6, 7, 8, 9, 10, 12, 15, 20].map((m) => (
+                <option key={m} value={m}>
+                  {m} min drive
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-slate-400">
+              larger = bigger trade area (more population)
+            </span>
           </div>
 
           {banner?.error && (

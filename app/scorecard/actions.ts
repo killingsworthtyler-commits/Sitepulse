@@ -2,8 +2,12 @@
 
 import { autofillSite, type AutofillResult } from "@/lib/autofill";
 
-/** Server action: geocode an address and auto-fill what we can. */
-export async function autofillAction(address: string): Promise<AutofillResult> {
+/** Server action: geocode an address and auto-fill what we can, over a
+    drive-time trade area of `minutes` (default 7). */
+export async function autofillAction(
+  address: string,
+  minutes?: number,
+): Promise<AutofillResult> {
   const trimmed = address.trim();
   if (!trimmed) {
     return {
@@ -13,5 +17,5 @@ export async function autofillAction(address: string): Promise<AutofillResult> {
       warnings: [],
     };
   }
-  return autofillSite(trimmed);
+  return autofillSite(trimmed, minutes);
 }

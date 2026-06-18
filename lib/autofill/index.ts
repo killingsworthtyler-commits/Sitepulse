@@ -31,7 +31,10 @@ export interface AutofillResult {
   warnings: string[];
 }
 
-export async function autofillSite(address: string): Promise<AutofillResult> {
+export async function autofillSite(
+  address: string,
+  minutes?: number,
+): Promise<AutofillResult> {
   const geo = await geocodeRobust(address);
   if (!geo) {
     return {
@@ -125,7 +128,7 @@ export async function autofillSite(address: string): Promise<AutofillResult> {
 
   // Demographics — ACS over the trade area (drive-time when keyed, else ring)
   const key = process.env.CENSUS_API_KEY;
-  const ta = await getTradeArea(geo.lat, geo.lng);
+  const ta = await getTradeArea(geo.lat, geo.lng, minutes ? { minutes } : {});
   const taLabel =
     ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
   const demo = await ringDemographics(geo.state, geo.county, ta.weights, key);
