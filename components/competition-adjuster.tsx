@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { desktopScore } from "@/lib/prospect/score";
 import type { SiteMetrics } from "@/lib/prospect/metrics";
-import type { Variant } from "@/lib/scorecard/modwash";
 import type { CompetitionCandidate } from "@/lib/report/build";
+import type { DealType } from "@/lib/deal";
+import { regenerateAnalysisAction } from "@/app/report/actions";
 import { GradeBadge } from "@/components/badges";
 
 // The score banner, but interactive: the user includes/excludes nearby washes
@@ -13,18 +15,35 @@ import { GradeBadge } from "@/components/badges";
 // default; other wash types can be opted in if one was mislabeled.
 export function CompetitionAdjuster({
   metrics,
-  variant,
   candidates,
+  address,
+  dealType,
+  canRegenerate,
 }: {
   metrics: SiteMetrics;
-  variant: Variant;
   candidates: CompetitionCandidate[];
+  address: string;
+  dealType: DealType;
+  /** Whether the AI read can be re-run + saved (key + DB configured). */
+  canRegenerate: boolean;
 }) {
   const [counted, setCounted] = useState<boolean[]>(() => candidates.map((c) => c.counts));
   const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const router = useRouter();
 
   const competition = counted.filter(Boolean).length;
   const defaultCompetition = candidates.filter((c) => c.counts).length;
+
+  function regenerate() {
+    setErr(null);
+    startTransition(async () => {
+      const res = await regenerateAnalysisAction(address, dealType, counted);
+      if (!res.ok) setErr(res.error ?? "Couldn't regenerate.");
+      else router.refresh();
+    });
+  }
 
   const score = useMemo(
     () => desktopScore({ ...metrics, competition }),
@@ -105,6 +124,23 @@ export function CompetitionAdjuster({
                   </li>
                 ))}
               </ul>
+
+              {/* Persist the selection + re-run the AI analysis for it */}
+              {canRegenerate && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={regenerate}
+                    disabled={pending}
+                    className="brand-gradient rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {pending ? "Updating AI analysis…" : "Save selection & update AI analysis"}
+                  </button>
+                  <span className="text-[11px] text-slate-400">
+                    Saves this competitor set and re-runs the AI read to match it.
+                  </span>
+                  {err && <span className="text-[11px] text-rose-600">{err}</span>}
+                </div>
+              )}
             </div>
           )}
         </div>

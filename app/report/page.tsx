@@ -219,8 +219,10 @@ export default async function ReportPage({
       {/* Score banner — interactive: trim competition and the score recomputes */}
       <CompetitionAdjuster
         metrics={m}
-        variant={m.variant}
         candidates={report.competitionCandidates ?? []}
+        address={address}
+        dealType={dealType}
+        canRegenerate={!!report.reasoning && reportsConfigured()}
       />
 
       {/* AI analyst read */}

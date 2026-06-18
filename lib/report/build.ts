@@ -23,7 +23,7 @@ import type { Grade } from "@/lib/scorecard/modwash";
 const COMP_RADIUS = 4828; // 3 miles
 
 // Demographic rows worth handing the AI analyst (keeps the prompt focused).
-const DEMO_HIGHLIGHT_LABELS = new Set([
+export const DEMO_HIGHLIGHT_LABELS = new Set([
   "Total Population",
   "Median Age",
   "Median Household Income",
