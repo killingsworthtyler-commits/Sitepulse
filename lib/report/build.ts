@@ -10,6 +10,7 @@ import {
   type TypedWash,
 } from "@/lib/autofill/places";
 import { popRingRadiusMeters } from "@/lib/autofill/tradearea";
+import { findCannibalization, type CannibalStore } from "@/lib/report/cannibalization";
 import { gatherSiteMetrics, type SiteMetrics } from "@/lib/prospect/metrics";
 import { desktopScore } from "@/lib/prospect/score";
 import { fetchDemographicsReport, type DemographicsReport } from "@/lib/demographics/report";
@@ -31,6 +32,8 @@ export interface SiteReport {
   washes?: TypedWash[];
   /** Radius (meters) of the 20K-population competition ring. */
   ringRadiusM?: number;
+  /** Existing ModWash stores whose ring overlaps the candidate's. */
+  cannibalization?: CannibalStore[];
   demographics?: DemographicsReport;
 }
 
@@ -50,6 +53,7 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
   ]);
 
   const score = desktopScore(metrics);
+  const cannibalization = findCannibalization(loc.lat, loc.lng, ringRadiusM);
 
   return {
     ok: true,
@@ -62,6 +66,7 @@ export async function buildSiteReport(address: string): Promise<SiteReport> {
     competitors,
     washes,
     ringRadiusM,
+    cannibalization,
     demographics,
   };
 }

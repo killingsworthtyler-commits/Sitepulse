@@ -237,6 +237,60 @@ export default async function ReportPage({
         </section>
       )}
 
+      {/* Cannibalization */}
+      <section className="mt-8">
+        <h2 className="font-display mb-1 text-xl font-bold uppercase tracking-wide text-ink">
+          Cannibalization
+        </h2>
+        <p className="mb-4 text-xs text-slate-500">
+          Existing ModWash stores whose {ringMi}-mi ring overlaps this site&apos;s
+          ring — shared trade area that could split volume.
+        </p>
+        {(report.cannibalization?.length ?? 0) === 0 ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            ✓ No existing ModWash within range — no cannibalization.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white ring-1 ring-slate-900/[0.02]">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-2 font-medium">Store</th>
+                  <th className="px-4 py-2 font-medium">Distance</th>
+                  <th className="px-4 py-2 font-medium">Ring overlap</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.cannibalization!.map((s) => (
+                  <tr key={s.code} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-2">
+                      <span className="font-medium text-slate-900">{s.name}</span>{" "}
+                      <span className="text-xs text-slate-500">
+                        {s.code} · {s.city}, {s.state}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 tabular-nums text-slate-700">{s.distMi} mi</td>
+                    <td className="px-4 py-2">
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                          s.overlapPct >= 40
+                            ? "bg-rose-100 text-rose-700"
+                            : s.overlapPct >= 15
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {s.overlapPct}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {/* Demographics */}
       {report.demographics?.ok && report.demographics.sections && (
         <section className="mt-8">
