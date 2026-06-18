@@ -33,6 +33,15 @@ const DEMO_HIGHLIGHT_LABELS = new Set([
   "Avg Household Size",
 ]);
 
+/** A nearby wash the user can include/exclude from the competition count. */
+export interface CompetitionCandidate {
+  name: string;
+  type: string;
+  distMi: number;
+  /** Counts toward competition by default (the express set, minus an acquisition's asset). */
+  counts: boolean;
+}
+
 export interface SiteReport {
   ok: boolean;
   error?: string;
@@ -60,6 +69,10 @@ export interface SiteReport {
   dealType?: DealType;
   /** For an acquisition: the existing on-site wash being bought (excluded from competition). */
   target?: { name: string; type: string } | null;
+  /** Names of the washes counted as direct competition by default (for the trim checklist). */
+  defaultCompetitorNames?: string[];
+  /** Every nearby wash that could count as competition, with its default state (for the trim UI). */
+  competitionCandidates?: CompetitionCandidate[];
 }
 
 export async function buildSiteReport(
@@ -84,23 +97,37 @@ export async function buildSiteReport(
   // Acquisition: the wash sitting on the address is the asset being bought, not a
   // competitor. Detect it (nearest wash within ~0.12 mi), drop it from the
   // competitor count, and re-score so the deal isn't penalized for its own asset.
-  const onSiteWashes = washes.filter(
-    (w) => metersBetween(loc.lat, loc.lng, w.lat, w.lng) <= ONSITE_M,
-  );
+  const onSite = (la: number, lo: number) => metersBetween(loc.lat, loc.lng, la, lo) <= ONSITE_M;
+  const onSiteWashes = washes.filter((w) => onSite(w.lat, w.lng));
   const target =
     dealType === "acquisition" && onSiteWashes.length > 0
       ? { name: onSiteWashes[0].name, type: onSiteWashes[0].type }
       : null;
 
-  const onSiteCompetitors = target
-    ? allCompetitors.filter((c) => metersBetween(loc.lat, loc.lng, c.lat, c.lng) <= ONSITE_M)
-    : [];
+  // Direct competitors = the express/automatic washes shown on the report (minus
+  // the on-site asset in an acquisition). Deriving the count from the SAME list
+  // the user sees means the count is exactly what they can trim — the interactive
+  // checklist on the report toggles these and re-scores live.
+  const directCompetitors = washes.filter(
+    (w) => w.type === "Express / automatic" && !(target && onSite(w.lat, w.lng)),
+  );
+  const defaultCompetitorNames = directCompetitors.map((w) => w.name);
   const competitors = target
-    ? allCompetitors.filter((c) => metersBetween(loc.lat, loc.lng, c.lat, c.lng) > ONSITE_M)
+    ? allCompetitors.filter((c) => !onSite(c.lat, c.lng))
     : allCompetitors;
-  const metrics: SiteMetrics = target
-    ? { ...rawMetrics, competition: Math.max(0, rawMetrics.competition - onSiteCompetitors.length) }
-    : rawMetrics;
+  const metrics: SiteMetrics = { ...rawMetrics, competition: directCompetitors.length };
+
+  // Every nearby wash that could plausibly be competition (express by default,
+  // plus other types the user can opt in), for the report's trim checklist.
+  const competitionCandidates: CompetitionCandidate[] = washes
+    .filter((w) => w.type !== "ModWash (own store)" && w.type !== "Not a wash")
+    .map((w) => ({
+      name: w.name,
+      type: w.type,
+      distMi: Math.round((metersBetween(loc.lat, loc.lng, w.lat, w.lng) / 1609.34) * 100) / 100,
+      counts: w.type === "Express / automatic" && !(target !== null && onSite(w.lat, w.lng)),
+    }))
+    .sort((a, b) => a.distMi - b.distMi);
 
   const score = desktopScore(metrics);
   const cannibalization = findCannibalization(loc.lat, loc.lng, ringRadiusM);
@@ -130,7 +157,7 @@ export async function buildSiteReport(
       competition: {
         count: metrics.competition,
         quality: metrics.qualityOfCompetition,
-        names: competitors.slice(0, 8).map((c) => c.name),
+        names: defaultCompetitorNames.slice(0, 8),
       },
       washesByType,
       demographics: demoHighlights,
@@ -163,5 +190,7 @@ export async function buildSiteReport(
     demographics,
     dealType,
     target,
+    defaultCompetitorNames,
+    competitionCandidates,
   };
 }

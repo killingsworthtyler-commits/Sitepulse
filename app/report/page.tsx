@@ -3,7 +3,7 @@ import { buildSiteReport } from "@/lib/report/build";
 import { ReportMap } from "@/components/report-map";
 import { ShareButton } from "@/components/share-button";
 import { PrintButton } from "@/components/print-button";
-import { GradeBadge } from "@/components/badges";
+import { CompetitionAdjuster } from "@/components/competition-adjuster";
 
 export const metadata = {
   title: "Site Report — SITE PULSE",
@@ -178,19 +178,12 @@ export default async function ReportPage({
         </div>
       )}
 
-      {/* Score banner */}
-      <div className="mb-6 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-5 ring-1 ring-slate-900/[0.02]">
-        <GradeBadge grade={report.score!.grade} size="lg" />
-        <div>
-          <p className="font-display text-3xl font-bold text-ink">
-            {(report.score!.percent * 100).toFixed(0)}%
-          </p>
-          <p className="text-xs text-slate-500">
-            Desktop score (traffic, competition & market). Visibility, ingress &
-            layout need a site visit.
-          </p>
-        </div>
-      </div>
+      {/* Score banner — interactive: trim competition and the score recomputes */}
+      <CompetitionAdjuster
+        metrics={m}
+        variant={m.variant}
+        candidates={report.competitionCandidates ?? []}
+      />
 
       {/* AI analyst read */}
       {report.reasoning && (
