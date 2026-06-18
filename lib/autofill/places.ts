@@ -289,7 +289,19 @@ const DETAIL_NAMES = [
   "full service", "full-serve", "full serve",
   "shammy", "buff n shine", "buff & shine", "buff and shine",
 ];
-const NON_WASH_NAMES = ["consultants", "consulting", "supply", "equipment", "gift", "car seat"];
+// Names Google sometimes tags `car_wash` that are NOT washes — businesses we
+// must not count as competition or label as a wash. Auto-services (tint, wrap,
+// glass, repair, etc.) are the common false positives in dense retail corridors.
+const NON_WASH_NAMES = [
+  "consultants", "consulting", "supply", "equipment", "gift", "car seat",
+  // window tint / vinyl wrap / upholstery
+  "tint", "window film", "wrap", "vinyl", "upholstery", "ppf", "paint protection",
+  // auto repair / mechanical / body
+  "auto repair", "mechanic", "collision", "body shop", "auto glass",
+  "oil change", "lube", "smog", "muffler", "transmission", "tire", "brake",
+  // electronics / dealership / rental
+  "audio", "stereo", "dealership", "rent a car", "rent-a-car", "rental",
+];
 const NON_COMPETITOR_NAME = [
   ...SELF_SERVE_NAMES,
   ...DETAIL_NAMES,
