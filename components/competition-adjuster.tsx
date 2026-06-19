@@ -42,7 +42,13 @@ export function CompetitionAdjuster({
   const [err, setErr] = useState<string | null>(null);
 
   const competition = types.filter((t) => t === EXPRESS).length;
-  const score = useMemo(() => desktopScore({ ...metrics, competition }), [metrics, competition]);
+  // Zero competitors logically means no competition quality, so don't keep
+  // penalizing "Quality of Competition" once the user has cleared the set.
+  const qualityOfCompetition = competition === 0 ? "None" : metrics.qualityOfCompetition;
+  const score = useMemo(
+    () => desktopScore({ ...metrics, competition, qualityOfCompetition }),
+    [metrics, competition, qualityOfCompetition],
+  );
 
   // The AI read was generated for the saved classification; flag it stale if the
   // set of washes counted as competition has changed since.
@@ -94,8 +100,8 @@ export function CompetitionAdjuster({
             )}
           </div>
           <p className="text-xs text-slate-500">
-            Desktop score (traffic, competition &amp; market). Visibility, ingress &amp;
-            layout need a site visit.
+            Desktop pre-screen — 5 of the 9 scorecard criteria. Excludes the site-visit
+            criteria (visibility, ingress/egress, layout), which need eyes on the ground.
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -104,6 +110,39 @@ export function CompetitionAdjuster({
             competitor{competition === 1 ? "" : "s"}
           </p>
         </div>
+      </div>
+
+      {/* Per-criterion breakdown — so the score is never a black box. Updates live. */}
+      <div className="border-t border-slate-100 px-5 py-3">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          How the score is built
+        </p>
+        <ul className="space-y-1">
+          {score.criteria.map((c) => {
+            const tone =
+              c.points >= 3
+                ? "bg-emerald-100 text-emerald-700"
+                : c.points === 2
+                  ? "bg-lime-100 text-lime-700"
+                  : c.points === 1
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-rose-100 text-rose-700";
+            return (
+              <li key={c.id} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 truncate text-slate-600">
+                  {c.label}
+                  {c.rating && <span className="ml-1 text-slate-400">· {c.rating}</span>}
+                </span>
+                <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${tone}`}>
+                  {c.points}/3
+                </span>
+                <span className="w-14 shrink-0 text-right tabular-nums text-[11px] text-slate-500">
+                  {c.earned}/{c.possible} pts
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
       {/* Hand-classification list */}

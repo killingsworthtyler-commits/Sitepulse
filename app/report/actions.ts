@@ -42,7 +42,9 @@ export async function regenerateAnalysisAction(
   const competition = updatedCandidates.filter((c) => c.counts).length;
   const competitorNames = updatedCandidates.filter((c) => c.counts).map((c) => c.name);
 
-  const metrics = { ...report.metrics!, competition };
+  // Zero competitors → no competition quality (keep it consistent with the count).
+  const qualityOfCompetition = competition === 0 ? "None" : report.metrics!.qualityOfCompetition;
+  const metrics = { ...report.metrics!, competition, qualityOfCompetition };
   const score = desktopScore(metrics);
 
   const demoHighlights = (report.demographics?.sections ?? [])
