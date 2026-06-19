@@ -202,9 +202,6 @@ export default async function ReportPage({
                 );
               })}
             </div>
-            <p className="mt-1 text-[11px] text-slate-400">
-              Population zones match the internal CTA size; drive-time matches GrowthFactor.
-            </p>
           </div>
         );
       })()}
