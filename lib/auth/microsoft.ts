@@ -16,6 +16,16 @@ export function redirectUri(origin: string): string {
   return `${origin}/api/auth/callback`;
 }
 
+/** Public origin behind a proxy (Render/Vercel set x-forwarded-*). Without this
+    the request's own host is the internal one (e.g. localhost:10000). Locally
+    there's no x-forwarded-host, so we keep the request's own origin (http). */
+export function publicOrigin(req: Request, fallback: string): string {
+  const host = req.headers.get("x-forwarded-host");
+  if (!host) return fallback;
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  return `${proto}://${host}`;
+}
+
 const enc = new TextEncoder();
 function b64url(bytes: Uint8Array): string {
   let s = "";

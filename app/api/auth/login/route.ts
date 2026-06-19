@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { microsoftConfigured, authorizeUrl, makePkce, randomState } from "@/lib/auth/microsoft";
+import { microsoftConfigured, authorizeUrl, makePkce, randomState, publicOrigin } from "@/lib/auth/microsoft";
 
 const secure = process.env.NODE_ENV === "production";
 
 // Kick off Microsoft sign-in: stash PKCE verifier + state in short-lived cookies,
 // then redirect to Microsoft's authorize endpoint.
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = publicOrigin(request, request.nextUrl.origin);
   if (!microsoftConfigured()) {
     return NextResponse.redirect(new URL("/login?error=config", origin));
   }
