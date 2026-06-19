@@ -33,12 +33,15 @@ export const DEMO_HIGHLIGHT_LABELS = new Set([
   "Avg Household Size",
 ]);
 
-/** A nearby wash the user can include/exclude from the competition count. */
+/** A nearby wash the user can hand-classify on the report. */
 export interface CompetitionCandidate {
   name: string;
+  /** Wash type — auto-suggested, but the user reclassifies it on the report. */
   type: string;
   distMi: number;
-  /** Counts toward competition by default (the express set, minus an acquisition's asset). */
+  /** Link to the exact place on Google Maps, to verify what it actually is. */
+  mapsUrl: string;
+  /** Counts toward competition (true when classified Express / automatic). */
   counts: boolean;
 }
 
@@ -104,28 +107,28 @@ export async function buildSiteReport(
       ? { name: onSiteWashes[0].name, type: onSiteWashes[0].type }
       : null;
 
-  // Direct competitors = the express/automatic washes shown on the report (minus
-  // the on-site asset in an acquisition). Deriving the count from the SAME list
-  // the user sees means the count is exactly what they can trim — the interactive
-  // checklist on the report toggles these and re-scores live.
-  const directCompetitors = washes.filter(
-    (w) => w.type === "Express / automatic" && !(target && onSite(w.lat, w.lng)),
-  );
+  // Every nearby wash Google returns becomes a hand-classifiable candidate on the
+  // report (auto-type is just the starting suggestion — the classifier is noisy).
+  // We exclude only our own stores and, for an acquisition, the on-site asset.
+  const isAsset = (w: TypedWash) => target !== null && onSite(w.lat, w.lng);
+  const candidateWashes = washes.filter((w) => w.type !== "ModWash (own store)" && !isAsset(w));
+
+  // Competition count derives from how many of those are classified Express —
+  // exactly the list the user sees and reclassifies, so the count never drifts.
+  const directCompetitors = candidateWashes.filter((w) => w.type === "Express / automatic");
   const defaultCompetitorNames = directCompetitors.map((w) => w.name);
   const competitors = target
     ? allCompetitors.filter((c) => !onSite(c.lat, c.lng))
     : allCompetitors;
   const metrics: SiteMetrics = { ...rawMetrics, competition: directCompetitors.length };
 
-  // Every nearby wash that could plausibly be competition (express by default,
-  // plus other types the user can opt in), for the report's trim checklist.
-  const competitionCandidates: CompetitionCandidate[] = washes
-    .filter((w) => w.type !== "ModWash (own store)" && w.type !== "Not a wash")
+  const competitionCandidates: CompetitionCandidate[] = candidateWashes
     .map((w) => ({
       name: w.name,
       type: w.type,
       distMi: Math.round((metersBetween(loc.lat, loc.lng, w.lat, w.lng) / 1609.34) * 100) / 100,
-      counts: w.type === "Express / automatic" && !(target !== null && onSite(w.lat, w.lng)),
+      mapsUrl: w.mapsUrl,
+      counts: w.type === "Express / automatic",
     }))
     .sort((a, b) => a.distMi - b.distMi);
 

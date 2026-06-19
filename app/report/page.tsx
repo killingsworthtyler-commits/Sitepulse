@@ -92,21 +92,6 @@ export default async function ReportPage({
     { label: "Traffic Driver", value: m.trafficDriver },
   ];
 
-  // Group nearby washes by type (express first — the real competitive set).
-  const WASH_ORDER = [
-    "Express / automatic",
-    "Gas-station wash",
-    "Self-serve / coin",
-    "Detail / hand / mobile",
-    "Unbranded / other",
-    "Not a wash",
-    "ModWash (own store)",
-  ];
-  const washGroups = WASH_ORDER.map((type) => ({
-    type,
-    names: (report.washes ?? []).filter((w) => w.type === type).map((w) => w.name),
-  })).filter((g) => g.names.length > 0);
-
   // 20K-pop competition rings: a competitor whose ring overlaps the site ring
   // (centers within 2× the radius) is "direct competition" — numbered on the map.
   const ringRadiusM = report.ringRadiusM ?? 1.44 * 1609.34;
@@ -130,7 +115,7 @@ export default async function ReportPage({
             {title}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {report.matchedAddress} · {report.competitors?.length ?? 0} competing washes within 3 mi
+            {report.matchedAddress} · {m.competition} competing wash{m.competition === 1 ? "" : "es"} within 3 mi
           </p>
         </div>
         <div className="no-print flex flex-wrap gap-2">
@@ -359,51 +344,6 @@ export default async function ReportPage({
         </aside>
       </div>
 
-      {/* Competing washes by type */}
-      {washGroups.length > 0 && (
-        <section className="mt-8">
-          <h2 className="font-display mb-1 text-xl font-bold uppercase tracking-wide text-ink">
-            Nearby Car Washes by Type
-          </h2>
-          <p className="mb-4 text-xs text-slate-500">
-            All car washes within 3 mi (Google Places). &ldquo;Express / automatic&rdquo;
-            is the direct competitive set — the others are excluded from the
-            competition count. Trim to your true competitors as needed.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {washGroups.map((g) => (
-              <div
-                key={g.type}
-                className={`rounded-lg border bg-white p-3 ring-1 ring-slate-900/[0.02] ${
-                  g.type === "Express / automatic"
-                    ? "border-rose-200"
-                    : "border-slate-200"
-                }`}
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <span
-                    className={`text-xs font-bold uppercase tracking-wide ${
-                      g.type === "Express / automatic" ? "text-rose-600" : "text-slate-500"
-                    }`}
-                  >
-                    {g.type}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 tabular-nums">
-                    {g.names.length}
-                  </span>
-                </div>
-                <ul className="space-y-0.5 text-sm text-slate-700">
-                  {g.names.map((name, i) => (
-                    <li key={`${name}-${i}`} className="truncate">
-                      {name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Cannibalization */}
       <section className="mt-8">

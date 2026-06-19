@@ -419,6 +419,15 @@ export interface TypedWash {
   lat: number;
   lng: number;
   type: WashType;
+  /** Link to the exact place on Google Maps (for hand-verifying what it is). */
+  mapsUrl: string;
+}
+
+/** Canonical "open this exact place" Google Maps link from a place id (or a
+    name+coords fallback when the id is missing). */
+function mapsLink(placeId: string | undefined, name: string, lat: number, lng: number): string {
+  if (placeId) return `https://www.google.com/maps/place/?q=place_id:${placeId}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}%20${lat}%2C${lng}`;
 }
 
 /** Every car wash within `radius` m, each labeled with its type (express,
@@ -436,7 +445,7 @@ export async function findCarWashesTyped(
         "Content-Type": "application/json",
         "X-Goog-Api-Key": key,
         "X-Goog-FieldMask":
-          "places.displayName,places.location,places.primaryType,places.types",
+          "places.id,places.displayName,places.location,places.primaryType,places.types",
       },
       body: JSON.stringify({
         includedTypes: ["car_wash"],
@@ -451,6 +460,7 @@ export async function findCarWashesTyped(
     return (data.places ?? [])
       .map(
         (p: {
+          id?: string;
           displayName?: { text?: string };
           location?: { latitude?: number; longitude?: number };
           primaryType?: string;
@@ -461,7 +471,7 @@ export async function findCarWashesTyped(
           const lg = p.location?.longitude;
           if (!name || lt == null || lg == null) return null;
           const lite: PlaceLite = { name, primaryType: p.primaryType, types: p.types ?? [] };
-          return { name, lat: lt, lng: lg, type: classifyWashType(lite) };
+          return { name, lat: lt, lng: lg, type: classifyWashType(lite), mapsUrl: mapsLink(p.id, name, lt, lg) };
         },
       )
       .filter(Boolean) as TypedWash[];

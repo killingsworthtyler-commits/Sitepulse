@@ -15,11 +15,14 @@ export interface RegenerateResult {
   error?: string;
 }
 
-/** `counted` is aligned to report.competitionCandidates (true = counts as competition). */
+const EXPRESS = "Express / automatic";
+
+/** `types` is aligned to report.competitionCandidates — the user's hand-classified
+    wash type per row. Only "Express / automatic" counts as competition. */
 export async function regenerateAnalysisAction(
   address: string,
   dealType: DealType,
-  counted: boolean[],
+  types: string[],
 ): Promise<RegenerateResult> {
   if (!reportsConfigured()) {
     return { ok: false, error: "Saving isn't configured (no database)." };
@@ -31,11 +34,11 @@ export async function regenerateAnalysisAction(
   const report = cached.report;
   const candidates = report.competitionCandidates ?? [];
 
-  // Apply the user's selection to the candidate list + competition count.
-  const updatedCandidates = candidates.map((c, i) => ({
-    ...c,
-    counts: counted[i] ?? c.counts,
-  }));
+  // Apply the user's classification to each candidate; competition = express count.
+  const updatedCandidates = candidates.map((c, i) => {
+    const type = types[i] ?? c.type;
+    return { ...c, type, counts: type === EXPRESS };
+  });
   const competition = updatedCandidates.filter((c) => c.counts).length;
   const competitorNames = updatedCandidates.filter((c) => c.counts).map((c) => c.name);
 
