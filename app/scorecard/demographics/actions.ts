@@ -6,6 +6,7 @@ import {
 } from "@/lib/demographics/report";
 import { geocodeRobust } from "@/lib/autofill/census";
 import { findCtaAnchors } from "@/lib/autofill/places";
+import { DEFAULT_TRADE_AREA, type TradeAreaSpec } from "@/lib/autofill/tradearea";
 
 /** Build a demographic summary over an address's trade area, OR over a chosen
     anchor's trade area (the CTA). Also returns nearby anchors for the picker. */
@@ -32,7 +33,8 @@ export async function demographicsAction(
   const anchors = gKey ? await findCtaAnchors(loc.lat, loc.lng, gKey) : [];
 
   const center = anchor ?? { lat: loc.lat, lng: loc.lng, label: loc.matchedAddress };
-  const report = await fetchDemographicsForPoint(center.lat, center.lng, center.label, minutes);
+  const spec: TradeAreaSpec = minutes ? { mode: "drivetime", value: minutes } : DEFAULT_TRADE_AREA;
+  const report = await fetchDemographicsForPoint(center.lat, center.lng, center.label, spec);
 
   return {
     report,

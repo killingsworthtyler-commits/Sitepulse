@@ -3,7 +3,7 @@
 // auto-fill uses, but starts from coordinates instead of a typed address.
 
 import { geocodeCoords, ringDemographics, countyGrowth } from "@/lib/autofill/census";
-import { getTradeArea } from "@/lib/autofill/tradearea";
+import { getTradeArea, DEFAULT_TRADE_AREA, type TradeAreaSpec } from "@/lib/autofill/tradearea";
 import { getRingJobs } from "@/lib/autofill/lodes";
 import { nearestAadt } from "@/lib/autofill/aadt";
 import {
@@ -34,6 +34,7 @@ export interface SiteMetrics {
 export async function gatherSiteMetrics(
   lat: number,
   lng: number,
+  spec: TradeAreaSpec = DEFAULT_TRADE_AREA,
 ): Promise<SiteMetrics> {
   const censusKey = process.env.CENSUS_API_KEY;
   const gKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -41,7 +42,7 @@ export async function gatherSiteMetrics(
 
   // Kick off the independent lookups together.
   const fips = await geocodeCoords(lat, lng);
-  const weights = fips ? (await getTradeArea(lat, lng)).weights : {};
+  const weights = fips ? (await getTradeArea(lat, lng, spec)).weights : {};
 
   const [demo, growth, aadt, comp, driver] = await Promise.all([
     fips ? ringDemographics(fips.state, fips.county, weights, censusKey) : null,

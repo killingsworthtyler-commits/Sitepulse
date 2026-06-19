@@ -22,12 +22,13 @@ const EXPRESS = "Express / automatic";
 export async function regenerateAnalysisAction(
   address: string,
   dealType: DealType,
+  taKey: string,
   types: string[],
 ): Promise<RegenerateResult> {
   if (!reportsConfigured()) {
     return { ok: false, error: "Saving isn't configured (no database)." };
   }
-  const cached = await dbGetReport(address, dealType);
+  const cached = await dbGetReport(address, dealType, taKey);
   if (!cached?.report?.ok || !cached.report.metrics) {
     return { ok: false, error: "No saved report to regenerate. Refresh the data first." };
   }
@@ -77,7 +78,7 @@ export async function regenerateAnalysisAction(
     return { ok: false, error: "Couldn't reach the AI (check ANTHROPIC_API_KEY)." };
   }
 
-  await dbSaveReport(address, dealType, {
+  await dbSaveReport(address, dealType, taKey, {
     ...report,
     metrics,
     score: { percent: score.percent, grade: score.grade },

@@ -9,7 +9,11 @@ import {
   type Competitor,
   type TypedWash,
 } from "@/lib/autofill/places";
-import { popRingRadiusMeters } from "@/lib/autofill/tradearea";
+import {
+  popRingRadiusMeters,
+  DEFAULT_TRADE_AREA,
+  type TradeAreaSpec,
+} from "@/lib/autofill/tradearea";
 import { findCannibalization, type CannibalStore } from "@/lib/report/cannibalization";
 import { analogVariables, type AnalogVars } from "@/lib/analogs/variables";
 import { matchAnalogs, type AnalogMatch } from "@/lib/analogs/match";
@@ -76,11 +80,14 @@ export interface SiteReport {
   defaultCompetitorNames?: string[];
   /** Every nearby wash that could count as competition, with its default state (for the trim UI). */
   competitionCandidates?: CompetitionCandidate[];
+  /** The trade-area spec this report was built over (for the selector). */
+  tradeArea?: TradeAreaSpec;
 }
 
 export async function buildSiteReport(
   address: string,
   dealType: DealType = "build",
+  tradeArea: TradeAreaSpec = DEFAULT_TRADE_AREA,
 ): Promise<SiteReport> {
   const loc = await geocodeRobust(address);
   if (!loc || !loc.state || !loc.county) {
@@ -89,10 +96,10 @@ export async function buildSiteReport(
 
   const gKey = process.env.GOOGLE_MAPS_API_KEY;
   const [rawMetrics, allCompetitors, washes, demographics, ringRadiusM, analogVars] = await Promise.all([
-    gatherSiteMetrics(loc.lat, loc.lng),
+    gatherSiteMetrics(loc.lat, loc.lng, tradeArea),
     gKey ? findCompetitors(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
     gKey ? findCarWashesTyped(loc.lat, loc.lng, COMP_RADIUS, gKey) : Promise.resolve([]),
-    fetchDemographicsReport(address),
+    fetchDemographicsReport(address, tradeArea),
     popRingRadiusMeters(loc.lat, loc.lng),
     analogVariables(loc.lat, loc.lng),
   ]);
@@ -195,5 +202,6 @@ export async function buildSiteReport(
     target,
     defaultCompetitorNames,
     competitionCandidates,
+    tradeArea,
   };
 }

@@ -27,12 +27,15 @@ export function CompetitionAdjuster({
   candidates,
   address,
   dealType,
+  taKey,
   canRegenerate,
 }: {
   metrics: SiteMetrics;
   candidates: CompetitionCandidate[];
   address: string;
   dealType: DealType;
+  /** Trade-area cache key — so regenerate updates the right saved report. */
+  taKey: string;
   /** Whether the AI read can be re-run + saved (key + DB configured). */
   canRegenerate: boolean;
 }) {
@@ -70,7 +73,7 @@ export function CompetitionAdjuster({
   function regenerate() {
     setErr(null);
     startTransition(async () => {
-      const res = await regenerateAnalysisAction(address, dealType, types);
+      const res = await regenerateAnalysisAction(address, dealType, taKey, types);
       if (!res.ok) {
         setErr(res.error ?? "Couldn't update.");
         return;

@@ -1,6 +1,6 @@
 import type { Variant } from "@/lib/scorecard/modwash";
 import { geocodeRobust, ringDemographics, countyGrowth } from "./census";
-import { getTradeArea } from "./tradearea";
+import { getTradeArea, DEFAULT_DRIVE_MINUTES } from "./tradearea";
 import { getRingJobs } from "./lodes";
 import { nearestAadt } from "./aadt";
 import { estimateSnowDays, suggestVariant } from "./climate";
@@ -158,9 +158,8 @@ export async function autofillSite(
 
   // Demographics — ACS over the trade area (drive-time when keyed, else ring)
   const key = process.env.CENSUS_API_KEY;
-  const ta = await getTradeArea(geo.lat, geo.lng, minutes ? { minutes } : {});
-  const taLabel =
-    ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
+  const ta = await getTradeArea(geo.lat, geo.lng, { mode: "drivetime", value: minutes ?? DEFAULT_DRIVE_MINUTES });
+  const taLabel = ta.label;
   const demo = await ringDemographics(geo.state, geo.county, ta.weights, key);
 
   const ringNote =

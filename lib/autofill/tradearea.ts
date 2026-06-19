@@ -13,21 +13,68 @@
 
 const TIGER_BG =
   "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/10/query";
-const ORS_ISO = "https://api.openrouteservice.org/v2/isochrones/driving-car";
+const ORS_ISO = "https://api.openrouteservice.org/v2/isochrones";
+
+/** How the trade area is defined — mirrors the GrowthFactor "Walk/Drive Times"
+    panel plus a population-capture zone (our analog for their visitor "Trade Zone"). */
+export type TradeAreaMode = "population" | "drivetime" | "walktime" | "radius";
+
+export interface TradeAreaSpec {
+  mode: TradeAreaMode;
+  /** population → target residents · drive/walk → minutes · radius → miles. */
+  value: number;
+}
 
 export interface TradeArea {
   /** geoid → fraction (0–1] of that block group inside the trade area. */
   weights: Record<string, number>;
   areaSqMi: number;
-  mode: "drivetime" | "ring";
+  mode: TradeAreaMode;
   minutes?: number;
   radiusMi?: number;
+  targetPop?: number;
   /** The trade-area boundary as [lng,lat] points, for drawing. */
   polygon?: number[][];
+  /** Human label, e.g. "22K-pop trade zone" or "16-min drive-time". */
+  label: string;
 }
 
 export const DEFAULT_DRIVE_MINUTES = 7;
+// The score's default trade area: a ~22K-resident zone. This matches the size of
+// Hutton's internal CTAs (Inman ≈ 24.5K, Jax ≈ 20K) far better than a fixed
+// drive-time, and it self-adjusts — smaller in dense markets, larger in rural.
+export const DEFAULT_TRADE_AREA: TradeAreaSpec = { mode: "population", value: 22000 };
 const FALLBACK_RADIUS_MI = 3;
+
+/** Compact key for URLs + cache, e.g. "population:22000" or "drivetime:16". */
+export function tradeAreaKey(spec: TradeAreaSpec): string {
+  return `${spec.mode}:${spec.value}`;
+}
+
+/** Parse a `mode:value` key back to a spec (falls back to the default). */
+export function parseTradeArea(s: string | undefined): TradeAreaSpec {
+  if (!s) return DEFAULT_TRADE_AREA;
+  const [mode, v] = s.split(":");
+  const value = Number(v);
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TRADE_AREA;
+  if (mode === "population" || mode === "drivetime" || mode === "walktime" || mode === "radius") {
+    return { mode, value };
+  }
+  return DEFAULT_TRADE_AREA;
+}
+
+export function tradeAreaLabel(spec: TradeAreaSpec): string {
+  switch (spec.mode) {
+    case "population":
+      return `${Math.round(spec.value / 1000)}K-pop trade zone`;
+    case "drivetime":
+      return `${spec.value}-min drive-time`;
+    case "walktime":
+      return `${spec.value}-min walk-time`;
+    case "radius":
+      return `${spec.value}-mi radius`;
+  }
+}
 const SAMPLES = 700; // points sampled per block group for the area fraction
 
 // ---------------------------------------------------------------------------
@@ -101,15 +148,16 @@ function areaFraction(bgOuter: number[][], polygon: number[][]): number {
 // Data sources
 // ---------------------------------------------------------------------------
 
-/** OpenRouteService drive-time isochrone → outer ring [[lng,lat], …]. */
+/** OpenRouteService isochrone (drive or walk) → outer ring [[lng,lat], …]. */
 async function getIsochrone(
   lat: number,
   lng: number,
   minutes: number,
   key: string,
+  profile: "driving-car" | "foot-walking" = "driving-car",
 ): Promise<number[][] | null> {
   try {
-    const res = await fetch(ORS_ISO, {
+    const res = await fetch(`${ORS_ISO}/${profile}`, {
       method: "POST",
       headers: { Authorization: key, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -185,36 +233,50 @@ async function bgWeights(polygon: number[][]): Promise<Record<string, number>> {
 export async function getTradeArea(
   lat: number,
   lng: number,
-  opts: { minutes?: number; radiusMi?: number } = {},
+  spec: TradeAreaSpec = DEFAULT_TRADE_AREA,
 ): Promise<TradeArea> {
   const key = process.env.ORS_API_KEY;
-  const minutes = opts.minutes ?? DEFAULT_DRIVE_MINUTES;
+  const label = tradeAreaLabel(spec);
 
-  if (key) {
-    const ring = await getIsochrone(lat, lng, minutes, key);
+  // Drive/walk time → an OpenRouteService isochrone (falls back to a ring).
+  if ((spec.mode === "drivetime" || spec.mode === "walktime") && key) {
+    const profile = spec.mode === "walktime" ? "foot-walking" : "driving-car";
+    const ring = await getIsochrone(lat, lng, spec.value, key, profile);
     if (ring) {
       const weights = await bgWeights(ring);
       if (Object.keys(weights).length > 0) {
         return {
           weights,
           areaSqMi: ringAreaSqMi(ring),
-          mode: "drivetime",
-          minutes,
+          mode: spec.mode,
+          minutes: spec.value,
           polygon: ring,
+          label,
         };
       }
     }
   }
 
-  const radiusMi = opts.radiusMi ?? FALLBACK_RADIUS_MI;
+  // Radius / population / isochrone-fallback → a circle. Population sizes the
+  // radius so the Census population inside ≈ the target.
+  let radiusMi: number;
+  if (spec.mode === "radius") {
+    radiusMi = spec.value;
+  } else if (spec.mode === "population") {
+    radiusMi = (await popRingRadiusMeters(lat, lng, spec.value)) / 1609.34;
+  } else {
+    radiusMi = FALLBACK_RADIUS_MI;
+  }
   const circle = circlePolygon(lat, lng, radiusMi);
   const weights = await bgWeights(circle);
   return {
     weights,
     areaSqMi: Math.PI * radiusMi * radiusMi,
-    mode: "ring",
+    mode: spec.mode === "population" ? "population" : spec.mode === "radius" ? "radius" : spec.mode,
     radiusMi,
+    targetPop: spec.mode === "population" ? spec.value : undefined,
     polygon: circle,
+    label,
   };
 }
 

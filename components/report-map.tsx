@@ -5,12 +5,18 @@ import { APIProvider, Map, Marker, useMap } from "@vis.gl/react-google-maps";
 
 const SITE_COLOR = "#ff008c";
 const COMP_COLOR = "#ef4444";
+const TA_COLOR = "#6366f1"; // indigo trade-area blob, like GrowthFactor's
 
 export interface RingedComp {
   name: string;
   lat: number;
   lng: number;
   n: number;
+}
+export interface StorePoint {
+  name: string;
+  lat: number;
+  lng: number;
 }
 
 /** Teardrop pin as an SVG data-URI. */
@@ -26,6 +32,7 @@ function pin(fill: string, label: string, w: number): string {
 }
 
 const SITE_PIN = pin(SITE_COLOR, "★", 46);
+const STORE_PIN = pin("#0284c7", "M", 30); // existing ModWash store
 const OTHER_DOT =
   "data:image/svg+xml," +
   encodeURIComponent(
@@ -33,65 +40,42 @@ const OTHER_DOT =
       `<circle cx="8" cy="8" r="5.5" fill="#f87171" stroke="white" stroke-width="2"/></svg>`,
   );
 
-/** Draws the 20K-pop rings: the site plus each direct (overlapping) competitor. */
-function TradeRings({
+/** Draws the filled trade-area polygon and frames the map around everything. */
+function TradeAreaLayer({
   site,
-  ringed,
-  radius,
+  polygon,
+  points,
 }: {
   site: { lat: number; lng: number };
-  ringed: RingedComp[];
-  radius: number;
+  polygon?: number[][];
+  points: { lat: number; lng: number }[];
 }) {
   const map = useMap("report");
   useEffect(() => {
     if (!map) return;
-    const circles: google.maps.Circle[] = [];
-    for (const c of ringed) {
-      circles.push(
-        new google.maps.Circle({
-          map,
-          center: { lat: c.lat, lng: c.lng },
-          radius,
-          strokeColor: COMP_COLOR,
-          strokeOpacity: 0.85,
-          strokeWeight: 2,
-          fillColor: COMP_COLOR,
-          fillOpacity: 0.05,
-          clickable: false,
-          zIndex: 2,
-        }),
-      );
-    }
-    circles.push(
-      new google.maps.Circle({
+    let poly: google.maps.Polygon | null = null;
+    if (polygon && polygon.length >= 3) {
+      poly = new google.maps.Polygon({
         map,
-        center: site,
-        radius,
-        strokeColor: SITE_COLOR,
-        strokeOpacity: 1,
-        strokeWeight: 3.5,
-        fillColor: SITE_COLOR,
-        fillOpacity: 0.05,
+        paths: polygon.map(([lng, lat]) => ({ lat, lng })),
+        strokeColor: TA_COLOR,
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: TA_COLOR,
+        fillOpacity: 0.12,
         clickable: false,
-        zIndex: 4,
-      }),
-    );
-
+        zIndex: 1,
+      });
+    }
     const bounds = new google.maps.LatLngBounds();
-    const dLat = radius / 111320;
-    const ext = (lat: number, lng: number) => {
-      const dLng = radius / (111320 * Math.cos((lat * Math.PI) / 180));
-      bounds.extend({ lat: lat + dLat, lng: lng + dLng });
-      bounds.extend({ lat: lat - dLat, lng: lng - dLng });
+    (polygon ?? []).forEach(([lng, lat]) => bounds.extend({ lat, lng }));
+    bounds.extend(site);
+    points.forEach((p) => bounds.extend(p));
+    if (!bounds.isEmpty()) map.fitBounds(bounds, 40);
+    return () => {
+      if (poly) poly.setMap(null);
     };
-    ext(site.lat, site.lng);
-    ringed.forEach((c) => ext(c.lat, c.lng));
-    map.fitBounds(bounds, 40);
-
-    return () => circles.forEach((c) => c.setMap(null));
-  }, [map, site, ringed, radius]);
-
+  }, [map, polygon, site, points]);
   return null;
 }
 
@@ -99,12 +83,16 @@ export function ReportMap({
   site,
   ringed,
   others,
-  ringRadiusM,
+  stores = [],
+  tradeAreaPolygon,
 }: {
   site: { lat: number; lng: number; label: string };
   ringed: RingedComp[];
   others: { name: string; lat: number; lng: number }[];
-  ringRadiusM: number;
+  /** Existing ModWash stores near the site (the "M" markers). */
+  stores?: StorePoint[];
+  /** The trade-area boundary [[lng,lat], …] to fill. */
+  tradeAreaPolygon?: number[][];
 }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
@@ -114,18 +102,28 @@ export function ReportMap({
       </div>
     );
   }
+  const points = [...ringed, ...others, ...stores].map((p) => ({ lat: p.lat, lng: p.lng }));
   return (
     <div className="h-[460px] overflow-hidden rounded-lg border border-slate-200">
       <APIProvider apiKey={apiKey}>
         <Map
           id="report"
           defaultCenter={{ lat: site.lat, lng: site.lng }}
-          defaultZoom={12}
+          defaultZoom={11}
           gestureHandling="cooperative"
           clickableIcons={false}
           mapTypeControl={false}
           style={{ width: "100%", height: "100%" }}
         >
+          {stores.map((s, i) => (
+            <Marker
+              key={`s-${s.lat}-${s.lng}-${i}`}
+              position={{ lat: s.lat, lng: s.lng }}
+              icon={STORE_PIN}
+              title={`ModWash: ${s.name}`}
+              zIndex={20}
+            />
+          ))}
           {others.map((c, i) => (
             <Marker
               key={`o-${c.lat}-${c.lng}-${i}`}
@@ -150,7 +148,7 @@ export function ReportMap({
             title={site.label}
             zIndex={100}
           />
-          <TradeRings site={site} ringed={ringed} radius={ringRadiusM} />
+          <TradeAreaLayer site={site} polygon={tradeAreaPolygon} points={points} />
         </Map>
       </APIProvider>
     </div>

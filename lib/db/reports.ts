@@ -30,9 +30,9 @@ function ensure(): Promise<void> {
   return ready;
 }
 
-/** Stable cache key: deal type + normalized address (case/space-insensitive). */
-function keyFor(address: string, dealType: string): string {
-  return `${dealType}::${address.trim().toLowerCase().replace(/\s+/g, " ")}`;
+/** Stable cache key: deal type + trade-area spec + normalized address. */
+function keyFor(address: string, dealType: string, taKey: string): string {
+  return `${dealType}::${taKey}::${address.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 
 export interface CachedReport {
@@ -43,11 +43,12 @@ export interface CachedReport {
 export async function dbGetReport(
   address: string,
   dealType: string,
+  taKey: string,
 ): Promise<CachedReport | null> {
   if (!sql) return null;
   await ensure();
   const rows = (await sql`
-    SELECT report, created_at FROM site_reports WHERE key = ${keyFor(address, dealType)}
+    SELECT report, created_at FROM site_reports WHERE key = ${keyFor(address, dealType, taKey)}
   `) as { report: SiteReport; created_at: string | Date }[];
   if (rows.length === 0) return null;
   const r = rows[0];
@@ -60,21 +61,22 @@ export async function dbGetReport(
 export async function dbSaveReport(
   address: string,
   dealType: string,
+  taKey: string,
   report: SiteReport,
 ): Promise<void> {
   if (!sql) return;
   await ensure();
   await sql`
     INSERT INTO site_reports (key, address, deal_type, report, created_at)
-    VALUES (${keyFor(address, dealType)}, ${address}, ${dealType}, ${JSON.stringify(report)}::jsonb, now())
+    VALUES (${keyFor(address, dealType, taKey)}, ${address}, ${dealType}, ${JSON.stringify(report)}::jsonb, now())
     ON CONFLICT (key) DO UPDATE SET
       report = EXCLUDED.report,
       created_at = now()
   `;
 }
 
-export async function dbDeleteReport(address: string, dealType: string): Promise<void> {
+export async function dbDeleteReport(address: string, dealType: string, taKey: string): Promise<void> {
   if (!sql) return;
   await ensure();
-  await sql`DELETE FROM site_reports WHERE key = ${keyFor(address, dealType)}`;
+  await sql`DELETE FROM site_reports WHERE key = ${keyFor(address, dealType, taKey)}`;
 }

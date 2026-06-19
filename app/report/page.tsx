@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { buildSiteReport } from "@/lib/report/build";
 import { dbGetReport, dbSaveReport, reportsConfigured } from "@/lib/db/reports";
+import { parseTradeArea, tradeAreaKey, tradeAreaLabel } from "@/lib/autofill/tradearea";
+import { getOperationalSites } from "@/lib/prospect/locations";
 import { ReportMap } from "@/components/report-map";
 import { ShareButton } from "@/components/share-button";
 import { PrintButton } from "@/components/print-button";
@@ -27,10 +29,12 @@ function distM(aLat: number, aLng: number, bLat: number, bLng: number): number {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ address?: string; name?: string; deal?: string; refresh?: string }>;
+  searchParams: Promise<{ address?: string; name?: string; deal?: string; refresh?: string; ta?: string }>;
 }) {
-  const { address, name, deal, refresh } = await searchParams;
+  const { address, name, deal, refresh, ta } = await searchParams;
   const dealType = deal === "acquisition" ? "acquisition" : "build";
+  const tradeArea = parseTradeArea(ta);
+  const taKey = tradeAreaKey(tradeArea);
 
   if (!address) {
     return (
@@ -52,14 +56,14 @@ export default async function ReportPage({
   // Cache-first: a report makes many (some billed) external calls, so serve a
   // saved copy when we have one. `?refresh=1` forces a fresh build + re-save.
   const wantRefresh = refresh === "1";
-  const cached = wantRefresh ? null : await dbGetReport(address, dealType);
+  const cached = wantRefresh ? null : await dbGetReport(address, dealType, taKey);
   let report = cached?.report ?? null;
   let generatedAt = cached?.generatedAt ?? null;
   let fromCache = !!cached;
   if (!report) {
-    report = await buildSiteReport(address, dealType);
+    report = await buildSiteReport(address, dealType, tradeArea);
     if (report.ok && reportsConfigured()) {
-      await dbSaveReport(address, dealType, report);
+      await dbSaveReport(address, dealType, taKey, report);
     }
     generatedAt = new Date().toISOString();
     fromCache = false;
@@ -81,11 +85,29 @@ export default async function ReportPage({
   const m = report.metrics!;
   const title = name || report.matchedAddress || address;
 
+  // Existing ModWash stores near the site → "M" markers on the map.
+  const nearbyStores = getOperationalSites()
+    .filter((s) => distM(report.lat!, report.lng!, s.lat, s.lng) <= 30 * 1609.34)
+    .map((s) => ({ name: s.name, lat: s.lat, lng: s.lng }));
+
+  // Build a report URL preserving address/name/deal/ta, overriding as needed.
+  const hrefWith = (over: { deal?: string; ta?: string; refresh?: string } = {}) => {
+    const p = new URLSearchParams();
+    p.set("address", address);
+    if (name) p.set("name", name);
+    const d = over.deal ?? (dealType === "acquisition" ? "acquisition" : "");
+    if (d) p.set("deal", d);
+    const t = over.ta ?? (ta ?? "");
+    if (t) p.set("ta", t);
+    if (over.refresh) p.set("refresh", over.refresh);
+    return `/report?${p.toString()}`;
+  };
+
   const metricRows: { label: string; value: string }[] = [
     { label: "Traffic Count (AADT)", value: m.trafficCount ? `${n0(m.trafficCount)} vpd` : "—" },
     { label: "Competition (3-mi)", value: `${m.competition} wash${m.competition === 1 ? "" : "es"}` },
     { label: "Quality of Competition", value: m.qualityOfCompetition },
-    { label: "Total Population (3-mi)", value: n0(m.population) },
+    { label: `Population (${tradeAreaLabel(tradeArea)})`, value: n0(m.population) },
     { label: "Median HH Income", value: m.medianIncome ? `$${n0(m.medianIncome)}` : "—" },
     { label: "Daytime Population", value: n0(m.daytimePop) },
     { label: "Projected Growth", value: `${m.projGrowth}%` },
@@ -139,7 +161,7 @@ export default async function ReportPage({
             {fromCache && " · served from cache (no API calls)"}
           </span>
           <Link
-            href={`/report?address=${encodeURIComponent(address)}${name ? `&name=${encodeURIComponent(name)}` : ""}${dealType === "acquisition" ? "&deal=acquisition" : ""}&refresh=1`}
+            href={hrefWith({ refresh: "1" })}
             className="shrink-0 font-semibold text-brand-blue hover:underline"
           >
             ↻ Refresh data
@@ -147,14 +169,53 @@ export default async function ReportPage({
         </div>
       )}
 
+      {/* Trade area selector — what geography the demographics + score run over */}
+      {(() => {
+        const PRESETS: { label: string; ta: string }[] = [
+          { label: "20K pop", ta: "population:20000" },
+          { label: "22K pop", ta: "population:22000" },
+          { label: "25K pop", ta: "population:25000" },
+          { label: "10-min drive", ta: "drivetime:10" },
+          { label: "16-min drive", ta: "drivetime:16" },
+          { label: "3-mi radius", ta: "radius:3" },
+        ];
+        return (
+          <div className="no-print mb-4">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Trade area <span className="text-slate-400">— drives the demographics &amp; score</span>
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {PRESETS.map((p) => {
+                const active = taKey === p.ta;
+                return (
+                  <Link
+                    key={p.ta}
+                    href={hrefWith({ ta: p.ta })}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      active
+                        ? "border-brand-blue bg-brand-blue text-white"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    {p.label}
+                  </Link>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Population zones match the internal CTA size; drive-time matches GrowthFactor.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* Deal type: build (greenfield) vs acquisition (buying the on-site wash) */}
       {(() => {
-        const base = `/report?address=${encodeURIComponent(address)}${name ? `&name=${encodeURIComponent(name)}` : ""}`;
         const tab = (label: string, value: "build" | "acquisition", sub: string) => {
           const active = dealType === value;
           return (
             <Link
-              href={`${base}&deal=${value}`}
+              href={hrefWith({ deal: value })}
               className={`flex-1 rounded-md border px-4 py-2 text-center transition-colors ${
                 active
                   ? "border-brand-blue bg-brand-blue/5 ring-1 ring-brand-blue"
@@ -207,6 +268,7 @@ export default async function ReportPage({
         candidates={report.competitionCandidates ?? []}
         address={address}
         dealType={dealType}
+        taKey={taKey}
         canRegenerate={!!report.reasoning && reportsConfigured()}
       />
 
@@ -297,21 +359,32 @@ export default async function ReportPage({
             site={{ lat: report.lat!, lng: report.lng!, label: title }}
             ringed={ringed}
             others={others}
-            ringRadiusM={ringRadiusM}
+            stores={nearbyStores}
+            tradeAreaPolygon={report.demographics?.polygon}
           />
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
             <span className="flex items-center gap-1.5">
-              <span className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: "#ff008c" }} />
-              Site — {ringMi}-mi 20K-pop ring
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: "#ff008c" }} />
+              Site
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: "#ef4444" }} />
-              {ringed.length} direct competitor{ringed.length === 1 ? "" : "s"} (rings overlap)
+              <span className="inline-block h-3 w-3 rounded-sm" style={{ background: "#6366f1", opacity: 0.4 }} />
+              Trade area ({tradeAreaLabel(tradeArea)})
+            </span>
+            {nearbyStores.length > 0 && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded-full" style={{ background: "#0284c7" }} />
+                {nearbyStores.length} ModWash store{nearbyStores.length === 1 ? "" : "s"}
+              </span>
+            )}
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: "#ef4444" }} />
+              {ringed.length} direct competitor{ringed.length === 1 ? "" : "s"}
             </span>
             {others.length > 0 && (
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#f87171" }} />
-                {others.length} other wash{others.length === 1 ? "" : "es"} nearby
+                {others.length} other wash{others.length === 1 ? "" : "es"}
               </span>
             )}
           </div>

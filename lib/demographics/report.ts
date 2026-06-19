@@ -5,7 +5,7 @@
 // (2029 projections, Seasonal Population) are omitted.
 
 import { geocodeRobust, geocodeCoords, countyGrowth } from "@/lib/autofill/census";
-import { getTradeArea } from "@/lib/autofill/tradearea";
+import { getTradeArea, DEFAULT_TRADE_AREA, type TradeAreaSpec } from "@/lib/autofill/tradearea";
 import { getRingJobs } from "@/lib/autofill/lodes";
 import type { CtaAnchor } from "@/lib/autofill/places";
 
@@ -190,7 +190,7 @@ const pct = (part: number, whole: number) =>
 /** Geocode an address, then build the demographic summary over its trade area. */
 export async function fetchDemographicsReport(
   address: string,
-  minutes?: number,
+  spec: TradeAreaSpec = DEFAULT_TRADE_AREA,
 ): Promise<DemographicsReport> {
   if (!process.env.CENSUS_API_KEY) {
     return { ok: false, error: "CENSUS_API_KEY is not configured on the server." };
@@ -199,7 +199,7 @@ export async function fetchDemographicsReport(
   if (!loc || !loc.state || !loc.county) {
     return { ok: false, error: "Couldn't find that address. Check the spelling and try again." };
   }
-  return fetchDemographicsForPoint(loc.lat, loc.lng, loc.matchedAddress, minutes);
+  return fetchDemographicsForPoint(loc.lat, loc.lng, loc.matchedAddress, spec);
 }
 
 /** Build the demographic summary over the trade area around any point (the site
@@ -208,21 +208,20 @@ export async function fetchDemographicsForPoint(
   lat: number,
   lng: number,
   label: string,
-  minutes?: number,
+  spec: TradeAreaSpec = DEFAULT_TRADE_AREA,
 ): Promise<DemographicsReport> {
   const key = process.env.CENSUS_API_KEY;
   if (!key) {
     return { ok: false, error: "CENSUS_API_KEY is not configured on the server." };
   }
 
-  const ta = await getTradeArea(lat, lng, minutes ? { minutes } : {});
+  const ta = await getTradeArea(lat, lng, spec);
   const weights = ta.weights;
   const geoids = Object.keys(weights);
   if (geoids.length === 0) {
     return { ok: false, error: "No Census block groups found for that area." };
   }
-  const tradeAreaLabel =
-    ta.mode === "drivetime" ? `${ta.minutes}-min drive-time` : `${ta.radiusMi}-mi ring`;
+  const tradeAreaLabel = ta.label;
   const cfips = await geocodeCoords(lat, lng);
 
   // Three batched ACS calls (across all counties) + jobs + growth, in parallel.
