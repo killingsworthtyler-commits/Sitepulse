@@ -13,13 +13,7 @@ const NAV: NavItem[] = [
   { label: "Reports", href: "/reports", soon: true },
 ];
 
-interface SidebarUser {
-  name: string | null;
-  email: string;
-  role: string;
-}
-
-export function Sidebar({ user }: { user?: SidebarUser | null }) {
+export function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -73,40 +67,6 @@ export function Sidebar({ user }: { user?: SidebarUser | null }) {
         })}
       </nav>
 
-      {user && (
-        <div className="mt-auto">
-          <Link
-            href="/account"
-            className={`mb-2 flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-              isActive("/account")
-                ? "bg-ink-soft font-semibold text-white"
-                : "text-slate-400 hover:bg-ink-soft/60 hover:text-slate-200"
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              {isActive("/account") && <span className="h-4 w-1 rounded-full brand-gradient" />}
-              Account
-            </span>
-            {user.role === "admin" && (
-              <span className="rounded bg-ink-soft px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate-400">
-                Admin
-              </span>
-            )}
-          </Link>
-          <div className="rounded-lg bg-ink-soft/50 p-3">
-            <p className="truncate text-xs font-medium text-slate-300">
-              {user.name || user.email}
-            </p>
-            <p className="truncate text-[11px] text-slate-500">{user.email}</p>
-            <a
-              href="/api/auth/logout"
-              className="mt-2 inline-block text-[11px] font-semibold text-slate-400 hover:text-slate-200"
-            >
-              Sign out →
-            </a>
-          </div>
-        </div>
-      )}
     </aside>
   );
 }

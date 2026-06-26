@@ -27,12 +27,6 @@ Node 20+ (CI/deploy pinned to 22 via `.node-version` / `render.yaml`).
 - `GOOGLE_MAPS_API_KEY` — Places API (New). Unlocks real competition/traffic-driver. Currently mocked if absent.
 - `ANTHROPIC_API_KEY` — Claude (Anthropic API). Unlocks the "AI Analyst Read" narrative on the site report. Section is omitted if absent. Optional `ANTHROPIC_MODEL` overrides the model (default `claude-opus-4-8`).
 
-### Auth — Microsoft SSO, invite-only (`lib/auth/`)
-Auth stays **OFF** until `SESSION_SECRET` is set (app is fully usable without it). When on, every page outside `/login` requires a signed-in, invited user. Stateless HMAC-signed cookie sessions (no auth library); the invite list lives in the Neon `app_users` table and is managed from the **Account** tab by admins.
-- `SESSION_SECRET` — master switch + cookie HMAC key. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
-- `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` — from an Azure App Registration (Entra ID). Redirect URI = `<app-url>/api/auth/callback`.
-- `ADMIN_EMAILS` — comma-separated emails seeded as admins on first run (so the first people can sign in + invite others).
-
 On Render these are set in the dashboard (the repo `render.yaml` declares them `sync:false`).
 
 ## Repo map
